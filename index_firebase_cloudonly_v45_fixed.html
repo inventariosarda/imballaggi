@@ -1,0 +1,1627 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventario Imballaggi</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --txt:#ffffff;
+      --muted: rgba(255,255,255,.78);
+      --border: rgba(255,255,255,.16);
+      --shadow: 0 10px 30px rgba(0,0,0,.35);
+      --radius: 20px;
+      --tap: 72px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(1200px 800px at 10% 10%, rgba(99,102,241,.22), transparent 60%),
+                  radial-gradient(900px 700px at 95% 15%, rgba(34,211,238,.18), transparent 60%),
+                  radial-gradient(900px 700px at 10% 90%, rgba(250,204,21,.12), transparent 60%),
+                  var(--bg);
+      color:var(--txt);
+    }
+    button, input, textarea{font:inherit;color:var(--txt)}
+    .wrap{max-width:980px; margin:0 auto; padding:14px;}
+    header{
+      position:sticky; top:0; z-index:5;
+      padding:6px 0 6px;
+      backdrop-filter: blur(10px);
+      background: linear-gradient(180deg, rgba(11,18,32,.92), rgba(11,18,32,.65));
+      border-bottom: 1px solid rgba(255,255,255,.08);
+    }
+    .topbar{
+      display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:nowrap;
+      max-width:980px; margin:0 auto; padding:0 14px;
+    }
+    .title{display:flex; flex-direction:column; gap:4px; min-width:0;}
+    .title h1{margin:0; font-size:20px; font-weight:950; letter-spacing:.2px;}
+    .title .sub{font-size:13px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .actions{display:flex; gap:6px; flex-wrap:nowrap; justify-content:flex-end; align-items:center;}
+    .chip{
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      padding:7px 9px;
+      font-size:13px;
+      border-radius: 999px;
+      font-weight:900;
+      cursor:pointer;
+      user-select:none;
+      min-height:44px;
+    }
+    .chip:active{transform: translateY(1px)}
+    .chip.danger{border-color: rgba(255,107,107,.6); background: rgba(255,107,107,.10)}
+
+    .card{
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .cardHd{
+      padding:14px 14px 10px;
+      border-bottom:1px solid rgba(255,255,255,.10);
+      display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    }
+    .cardHd h2{margin:0; font-size:17px; font-weight:950;}
+    .cardHd p{margin:6px 0 0; font-size:13px; color:var(--muted); line-height:1.25}
+    .cardBd{padding:14px;}
+
+    .stack{display:flex; flex-direction:column; gap:12px;}
+
+    /* Big buttons */
+    .bigBtn{
+      width:100%;
+      border:none;
+      border-radius: var(--radius);
+      padding:20px 18px;
+      min-height: var(--tap);
+      cursor:pointer;
+      text-align:left;
+      box-shadow: var(--shadow);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      font-weight:1000;
+      letter-spacing:.2px;
+    }
+    .bigBtn .label{font-size:24px; line-height:1.05;}
+    .bigBtn .hint{font-size:13px; font-weight:850; color: rgba(255,255,255,.88); margin-top:8px;}
+    .bigBtn .right{font-size:22px; opacity:.95; font-weight:1000;}
+    .bigBtn:active{transform: translateY(1px)}
+
+    /* Button palettes */
+    .c1{background: linear-gradient(135deg, rgba(34,211,238,.95), rgba(99,102,241,.85));}
+    .c2{background: linear-gradient(135deg, rgba(250,204,21,.95), rgba(249,115,22,.85));}
+    .c3{background: linear-gradient(135deg, rgba(74,222,128,.92), rgba(16,185,129,.82));}
+    .c4{background: linear-gradient(135deg, rgba(244,63,94,.90), rgba(168,85,247,.80));}
+    .c5{background: linear-gradient(135deg, rgba(59,130,246,.92), rgba(14,165,233,.82));}
+    .c6{background: linear-gradient(135deg, rgba(236,72,153,.88), rgba(250,204,21,.78));}
+
+    .rowBtns{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;}
+    .smallBtn{
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.08);
+      padding:12px 14px;
+      border-radius: 16px;
+      cursor:pointer;
+      font-weight:950;
+      min-height: 48px;
+    }
+    .smallBtn.primary{background: rgba(34,211,238,.18); border-color: rgba(34,211,238,.45)}
+    .smallBtn.danger{background: rgba(255,107,107,.12); border-color: rgba(255,107,107,.55)}
+    .smallBtn:active{transform: translateY(1px)}
+
+    /* Inventory item rows: 2/3 button + 1/3 total box */
+    .itemRow{display:flex; gap:12px; width:100%;}
+    .itemBtn{
+      flex:2;
+      border:none;
+      border-radius: var(--radius);
+      padding:18px 16px;
+      min-height: var(--tap);
+      cursor:pointer;
+      text-align:left;
+      box-shadow: var(--shadow);
+      background: rgba(255,255,255,.10);
+      border:1px solid rgba(255,255,255,.14);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .itemBtn:active{transform: translateY(1px)}
+    .itemBtn .name{font-size:24px; font-weight:1000; letter-spacing:.2px;}
+    .itemBtn .desc{font-size:13px; color: var(--muted); margin-top:8px; font-weight:850;}
+    .itemBtn .arrow{font-size:22px; opacity:.95; font-weight:1000;}
+    .totalBox{
+      flex:1;
+      border-radius: var(--radius);
+      min-height: var(--tap);
+      cursor:pointer;
+      box-shadow: var(--shadow);
+      background: rgba(255,255,255,.12);
+      border:1px solid rgba(255,255,255,.18);
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      padding:10px;
+      user-select:none;
+    }
+    .totalBox:active{transform: translateY(1px)}
+    .totalBox .t{font-size:12px; color: rgba(255,255,255,.88); font-weight:950; letter-spacing:.2px;}
+    .totalBox .v{font-size:30px; font-weight:1000; letter-spacing:.3px; margin-top:4px;}
+
+    input, textarea{
+      width:100%;
+      border-radius: 16px;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(0,0,0,.22);
+      padding:14px 14px;
+      outline:none;
+      font-size:16px;
+    }
+    textarea{min-height:110px; resize:vertical;}
+    .label{font-size:13px; color:var(--muted); margin:12px 0 8px; font-weight:950;}
+    .muted{color:var(--muted); font-size:13px; line-height:1.35}
+    .hr{height:1px; background: rgba(255,255,255,.12); margin:14px 0;}
+
+    /* Dialogs */
+    dialog{
+      width:min(580px, calc(100% - 22px));
+      border:none;
+      border-radius: 18px;
+      padding:0;
+      background: rgba(11,18,32,.95);
+      color: var(--txt);
+      box-shadow: var(--shadow);
+    }
+    dialog::backdrop{background: rgba(0,0,0,.62)}
+    .dlgHd{
+      padding:14px;
+      border-bottom:1px solid rgba(255,255,255,.12);
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+    }
+    .dlgHd h3{margin:0; font-size:17px; font-weight:1000;}
+    .dlgBd{padding:14px;}
+    .dlgFt{
+      padding:14px;
+      border-top:1px solid rgba(255,255,255,.12);
+      display:flex;
+      gap:10px;
+      justify-content:flex-end;
+      flex-wrap:wrap;
+    }
+    .list{display:flex; flex-direction:column; gap:10px;}
+    .entry{
+      border:1px solid rgba(255,255,255,.14);
+      background: rgba(255,255,255,.06);
+      border-radius: 16px;
+      padding:12px;
+    }
+    .entryTop{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
+    .entryTop .when{font-size:12px; color:var(--muted); font-weight:900;}
+    .inline2{display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px;}
+    @media (min-width:520px){ .inline2{grid-template-columns: 160px 1fr;} }
+  
+    /* Total box states */
+    .totalBox.zero{
+      background: rgba(255,255,255,.10);
+      border-color: rgba(255,255,255,.16);
+      opacity: .92;
+    }
+    .totalBox.has{
+      background: linear-gradient(135deg, rgba(74,222,128,.35), rgba(16,185,129,.25));
+      border-color: rgba(74,222,128,.55);
+    }
+    .totalBox.red{
+      background: linear-gradient(135deg, rgba(239,68,68,.40), rgba(220,38,38,.28));
+      border-color: rgba(239,68,68,.60);
+    }
+
+    .totalBox.has{
+      background: linear-gradient(135deg, rgba(74,222,128,.35), rgba(16,185,129,.25));
+      border-color: rgba(74,222,128,.55);
+    }
+    .totalBox.has .t{color: rgba(255,255,255,.92)}
+
+  
+    .minLine{margin-top:6px;font-size:12px;font-weight:900;color:rgba(255,255,255,.82);line-height:1.1;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+    .totalBox.below .v{color:rgba(255,80,80,1);} 
+  
+    .modal{position:fixed; inset:0; display:none; align-items:flex-end; justify-content:center; background:rgba(0,0,0,.55); z-index:99999; padding:14px;}
+    .modal .sheet{width:min(720px,100%); background:rgba(10,14,20,.96); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:14px; box-shadow:0 12px 40px rgba(0,0,0,.45);}
+    .modal input{width:100%;}
+  
+    /* Auth modal helpers */
+    .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+    .btn{
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.10);
+      padding:12px 14px;
+      border-radius: 16px;
+      cursor:pointer;
+      font-weight:950;
+      min-height: 48px;
+    }
+    .btn.big{min-width:140px}
+    .btn.alt{background: rgba(255,107,107,.12); border-color: rgba(255,107,107,.55)}
+    .btn.primary{background: rgba(34,211,238,.18); border-color: rgba(34,211,238,.45)}
+    .btn:active{transform: translateY(1px)}
+    #authModal textarea{min-height:90px}
+
+  </style>
+</head>
+<body>
+<header>
+  <div class="topbar">
+    <div class="title">
+      <div class="sub" id="subTitle">Menu principale</div>
+    </div>
+    <div class="actions">
+        <button class="chip" onclick="openAuth()">SYNC</button>
+      <button class="chip" id="btnHome">🏠 Home</button>
+      <button class="chip" id="btnBackup">💾 Backup</button>
+      <button class="chip danger" id="btnReset">🧨 Reset</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <main id="view"></main>
+</div>
+
+<!-- Quantità: tap su articolo -->
+<dialog id="dlgQty">
+  <div class="dlgHd">
+    <h3 id="qtyTitle">Inserisci quantità</h3>
+    <button class="chip" onclick="UI.closeQty()">✖</button>
+  </div>
+  <form id="qtyForm">
+    <div class="dlgBd">
+      <div class="muted" id="qtySub">—</div>
+      <div class="label">Quantità (premi INVIO)</div>
+      <input id="qtyInput" type="number" inputmode="numeric" step="any" placeholder="Es. 12" />
+      <div class="label">Nota (opzionale)</div>
+      <input id="qtyNote" placeholder="Es. scaffale 3" />
+      <input type="hidden" id="qtyInvId" />
+      <input type="hidden" id="qtyItemId" />
+    </div>
+    <div class="dlgFt">
+      <button class="smallBtn primary" type="submit">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Dettagli: tap sul box totale -->
+<dialog id="dlgDetails">
+  <div class="dlgHd">
+    <h3 id="detTitle">Dettagli</h3>
+    <button class="chip" onclick="UI.closeDetails()">✖</button>
+  </div>
+  <div class="dlgBd">
+    <div class="muted" id="detSub">—</div>
+    <div class="hr"></div>
+    <div class="list" id="detList"></div>
+  </div>
+  <div class="dlgFt">
+    <button class="smallBtn danger" id="btnClearItem">Azzera articolo</button>
+    <button class="smallBtn" onclick="UI.closeDetails()">Chiudi</button>
+  </div>
+</dialog>
+
+<!-- Backup -->
+<dialog id="dlgBackup">
+  <div class="dlgHd">
+    <h3>Backup dati</h3>
+    <button class="chip" onclick="UI.closeBackup()">✖</button>
+  </div>
+  <div class="dlgBd">
+    <div class="muted">Esporta/Importa setup + inventari (tutto nel browser).</div>
+    <div class="hr"></div>
+    <div class="rowBtns">
+      <button class="smallBtn primary" onclick="Data.downloadBackup()">⬇️ Scarica backup .json</button>
+    </div>
+    <div class="hr"></div>
+    <div class="label">Importa backup JSON (sovrascrive tutto)</div>
+    <input type="file" id="backupFile" accept="application/json" />
+  </div>
+  <div class="dlgFt">
+    <button class="smallBtn danger" onclick="Data.importBackup()">Importa</button>
+    <button class="smallBtn" onclick="UI.closeBackup()">Chiudi</button>
+  </div>
+</dialog>
+
+<!-- Excel export -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js"></script>
+<script src="./xlsx.full.min.js"></script>
+<!-- Firebase (cloud sync) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+<script>
+  // ===== Utils
+  const LS_KEY = "inventario_imballaggi_big_v4";
+  const uid = () => Math.random().toString(16).slice(2) + Math.random().toString(16).slice(2);
+  const pad = (n)=>String(n).padStart(2,"0");
+  const nowISO = ()=>new Date().toISOString();
+  const todayLabel = ()=>{ const d=new Date(); return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`; };
+  const fmtDate = (d)=>{ const dt=(d instanceof Date)?d:new Date(d); return `${pad(dt.getDate())}/${pad(dt.getMonth()+1)}/${dt.getFullYear()} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`; };
+  const escapeHtml = (s)=>String(s??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  const fmtQty = (n)=>{ const v=Number(n); if(!Number.isFinite(v)) return "0"; const isInt=Math.abs(v-Math.round(v))<1e-9; return isInt?String(Math.round(v)):String(Math.round(v*100)/100); };
+  const safeFile = (name)=>String(name||"inventario").replace(/[\\/:*?"<>|]+/g,"_").replace(/\s+/g," ").trim();
+  const sumEntries = (entries)=> (entries||[]).reduce((a,e)=>a + (Number(e.qty)||0), 0);
+
+  const csvEscape = (v)=>{
+    const s = String(v ?? "");
+    if(/[",\n\r;]/.test(s)) return '"' + s.replaceAll('"','""') + '"';
+    return s;
+  };
+  const makeCSV = (rows, headers)=>{
+    const sep = ";";
+    const head = headers.map(csvEscape).join(sep);
+    const body = rows.map(r=>headers.map(h=>csvEscape(r[h])).join(sep)).join("\n");
+    return head + "\n" + body;
+  };
+
+  const loadXLSX = (() => {
+    let p = null;
+    const urls = [
+      "https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js",
+      "https://unpkg.com/xlsx@0.20.3/dist/xlsx.full.min.js",
+      "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.20.3/xlsx.full.min.js"
+    ];
+    return () => {
+      if (typeof XLSX !== "undefined") return Promise.resolve(true);
+      if (p) return p;
+      p = new Promise(async (resolve) => {
+        for (const url of urls) {
+          const ok = await new Promise((res) => {
+            const s = document.createElement("script");
+            s.src = url;
+            s.async = true;
+            s.onload = () => res(true);
+            s.onerror = () => res(false);
+            document.head.appendChild(s);
+          });
+          if (ok && typeof XLSX !== "undefined") { resolve(true); return; }
+        }
+        resolve(false);
+      });
+      return p;
+    };
+  })();
+
+
+  // ===== Data
+  const Data = {
+    state: null,
+
+    normalize(){
+      // Garantisce schema minimo (utile anche dopo pull dal cloud)
+      const s = (this.state && typeof this.state === "object") ? this.state : {};
+      s.categories   = Array.isArray(s.categories)   ? s.categories   : [];
+      s.inventories  = Array.isArray(s.inventories)  ? s.inventories  : [];
+      s.last         = (s.last && typeof s.last === "object") ? s.last : {screen:"home"};
+      this.state = s;
+    },
+
+    load(){
+      // Cloud-only: lo stato viene caricato da Firebase dopo il login
+      this.state = {categories:[], inventories:[], last:{screen:"home"}};
+      this.normalize();
+    },
+
+    saveLocalOnly(){
+      // Cloud-only: niente persistenza locale
+    },
+
+    save(){
+      try{ this.state._updatedAt = Date.now(); }catch(e){}
+      // Cloud-only: salva su Firebase (se loggato)
+      try{ window.FirebaseSync.scheduleSave(); }catch(e){}
+    },
+
+    resetAll(){
+      if(!confirm("ATTENZIONE: cancello tutto (setup + inventari) anche ONLINE. Sicuro?")) return;
+      this.load();
+      try{ window.FirebaseSync.clearCloud(); }catch(e){}
+      UI.goHome(true);
+    },
+
+    download(filename, blob){
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();}, 900);
+    },
+
+    downloadBackup(){
+      const payload={exportedAt: nowISO(), app:"inventario-imballaggi-big", version:4, data:this.state};
+      this.download(`backup_inventario_${todayLabel().replaceAll("/","-")}.json`,
+        new Blob([JSON.stringify(payload,null,2)], {type:"application/json"}));
+    },
+
+    importBackup(){
+      const file=document.getElementById("backupFile").files?.[0];
+      if(!file){ alert("Seleziona un file JSON."); return; }
+      const r=new FileReader();
+      r.onload=()=>{
+        try{
+          const payload=JSON.parse(String(r.result));
+          const data=payload?.data;
+          if(!data || typeof data!=="object") throw new Error("Formato non valido");
+          if(!confirm("Importo il backup e sovrascrivo i dati attuali. Confermi?")) return;
+          data.categories ??= [];
+          data.inventories ??= [];
+          data.last ??= {screen:"home"};
+          this.state=data;
+          this.normalize();
+          this.save();
+          UI.closeBackup();
+          UI.goHome(true);
+        }catch(e){
+          console.error(e);
+          alert("Backup non valido o corrotto.");
+        }
+      };
+      r.readAsText(file,"utf-8");
+    }
+  };
+
+  function getCategory(catId){ return Data.state.categories.find(c=>c.id===catId); }
+  function findItem(itemId){
+    for(const c of Data.state.categories){
+      const it=(c.items||[]).find(i=>i.id===itemId);
+      if(it) return {category:c, item:it};
+    }
+    return null;
+  }
+  function itemsCount(){ return Data.state.categories.reduce((a,c)=>a+(c.items?.length||0),0); }
+
+    // ===== safety: evita schermata vuota in caso di errori runtime
+  window.addEventListener("error", (ev)=>{
+    try{
+      const v=document.getElementById("view");
+      if(v && (!v.innerHTML || v.innerHTML.trim()==="")){
+        v.innerHTML = `<div class="card"><div class="title">Errore</div><div class="sub" style="margin-top:8px;">${(ev?.message||"Errore script")}</div></div>`;
+      }
+    }catch(e){}
+  });
+
+// ===== UI
+  const UI = {
+    setSub(t){ document.getElementById("subTitle").textContent = t; },
+    render(html){ document.getElementById("view").innerHTML = html; },
+    goHome(reset=false){ Home.open(); },
+
+    openQty(invId,itemId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      const f=findItem(itemId);
+      if(!inv||!f) return;
+
+      document.getElementById("qtyTitle").textContent = `${f.item.code} • Inserisci quantità`;
+      document.getElementById("qtySub").textContent = `${f.category.name}${f.item.desc ? " • "+f.item.desc : ""}`;
+
+      document.getElementById("qtyInvId").value = invId;
+      document.getElementById("qtyItemId").value = itemId;
+
+      document.getElementById("qtyInput").value = "";
+      document.getElementById("qtyNote").value = "";
+
+      document.getElementById("dlgQty").showModal();
+      setTimeout(()=>document.getElementById("qtyInput").focus(), 30);
+    },
+    closeQty(){ document.getElementById("dlgQty").close(); },
+
+    openDetails(invId,itemId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      const f=findItem(itemId);
+      if(!inv||!f) return;
+
+      const entries=inv.counts?.[itemId]||[];
+      const total=sumEntries(entries);
+
+      document.getElementById("detTitle").textContent = `${f.item.code} • Dettagli`;
+      document.getElementById("detSub").textContent = `Totale: ${fmtQty(total)} • ${f.category.name}${f.item.desc ? " • "+f.item.desc : ""}`;
+
+      const list=document.getElementById("detList");
+      if(!entries.length){
+        list.innerHTML = `<div class="muted">Nessuna aggiunta.</div>`;
+      }else{
+        list.innerHTML = entries.slice().reverse().map(en=>`
+          <div class="entry">
+            <div class="entryTop">
+              <div class="when">${fmtDate(en.at)}</div>
+              <button class="smallBtn danger" onclick="Inventory.deleteEntry('${invId}','${itemId}','${en.id}')">Elimina</button>
+            </div>
+            <div class="inline2">
+              <div>
+                <div class="label" style="margin:0 0 8px;">Quantità</div>
+                <input type="number" inputmode="numeric" step="any" value="${escapeHtml(en.qty)}"
+                  onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                  onblur="Inventory.updateEntryQty('${invId}','${itemId}','${en.id}', this.value)" />
+              </div>
+              <div>
+                <div class="label" style="margin:0 0 8px;">Nota</div>
+                <input value="${escapeHtml(en.note||"")}" placeholder="Nota"
+                  onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                  onblur="Inventory.updateEntryNote('${invId}','${itemId}','${en.id}', this.value)" />
+              </div>
+            </div>
+          </div>
+        `).join("");
+      }
+
+      document.getElementById("btnClearItem").onclick = ()=>Inventory.clearItem(invId,itemId);
+      document.getElementById("dlgDetails").showModal();
+    },
+    closeDetails(){ document.getElementById("dlgDetails").close(); },
+
+    openBackup(){ document.getElementById("dlgBackup").showModal(); },
+    closeBackup(){ document.getElementById("dlgBackup").close(); },
+  };
+
+  // ===== Screens
+  const Home = {
+    open(){
+      UI.setSub("Menu principale");
+      const cats=Data.state.categories.length;
+      const items=itemsCount();
+      const invs=Data.state.inventories.length;
+
+      UI.render(`
+        <div class="card">
+          <div class="cardHd">
+            <div>
+              <h2>Menu</h2>
+              <p>Pulsanti grandi. Inserimento veloce: articolo → numero → INVIO.</p>
+            </div>
+            <div class="muted" style="text-align:right;">
+              Categorie: <b>${cats}</b><br>
+              Articoli: <b>${items}</b><br>
+              Inventari: <b>${invs}</b>
+            </div>
+          </div>
+          <div class="cardBd">
+            <div class="stack">
+              <button class="bigBtn c3" onclick="Inventory.startNew()">
+                <div>
+                  <div class="label">🆕 NUOVO INVENTARIO</div>
+                  <div class="hint">Crea inventario di oggi e inizia a contare</div>
+                </div>
+                <div class="right">→</div>
+              </button>
+
+              <button class="bigBtn c5" onclick="ViewInventories.open()">
+                <div>
+                  <div class="label">📚 VISUALIZZA INVENTARI</div>
+                  <div class="hint">Apri inventari fatti, esporta Excel, condividi</div>
+                </div>
+                <div class="right">→</div>
+              </button>
+
+              <button class="bigBtn c2" onclick="Setup.open()">
+                <div>
+                  <div class="label">⚙️ SETUP</div>
+                  <div class="hint">Crea categorie e articoli</div>
+                </div>
+                <div class="right">→</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      `);
+
+      Data.state.last={screen:"home"};
+      Data.save();
+    }
+  };
+
+  const Setup = {
+    open(){
+      UI.setSub("Setup");
+      const cats=Data.state.categories.slice().sort((a,b)=>a.name.localeCompare(b.name));
+
+      UI.render(`
+        <div class="card">
+          <div class="cardHd">
+            <div>
+              <h2>Setup</h2>
+              <p>Crea categorie e articoli. Modifica in linea.</p>
+            </div>
+            <div class="rowBtns">
+              <button class="smallBtn primary" onclick="UI.goHome()">← Menu</button>
+            </div>
+          </div>
+          <div class="cardBd">
+            <div class="stack">
+              <div class="card">
+                <div class="cardHd">
+                  <div><h2>➕ Nuova categoria</h2><p>Scrivi e premi INVIO</p></div>
+                </div>
+                <div class="cardBd">
+                  <form id="formAddCat">
+                    <input id="catName" placeholder="Es. CARTONI" autocomplete="off"/>
+                  </form>
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="cardHd">
+                  <div><h2>Categorie</h2><p>Tocca una categoria per gestire gli articoli</p></div>
+                </div>
+                <div class="cardBd">
+                  ${cats.length ? cats.map((c,idx)=>{
+                    const colorClass=["c1","c2","c3","c4","c5","c6"][idx%6];
+                    return `
+                      <button class="bigBtn ${colorClass}" onclick="Setup.openCategory('${c.id}')">
+                        <div>
+                          <div class="label">${escapeHtml(c.name)}</div>
+                          <div class="hint">${(c.items?.length||0)} articoli</div>
+                        </div>
+                        <div class="right">→</div>
+                      </button>
+                    `;
+                  }).join('<div style="height:10px"></div>') : `<div class="muted">Nessuna categoria. Creane una sopra.</div>`}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      setTimeout(()=>{
+        const f=document.getElementById("formAddCat");
+        const inp=document.getElementById("catName");
+        f?.addEventListener("submit",(e)=>{e.preventDefault(); Setup.addCategory();});
+        inp?.addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); Setup.addCategory(); }});
+        inp?.focus();
+      },0);
+
+      Data.state.last={screen:"setup"};
+      Data.save();
+    },
+
+    addCategory(){
+      const inp=document.getElementById("catName");
+      const name=(inp.value||"").trim();
+      if(!name) return;
+      const dup=Data.state.categories.find(c=>c.name.toLowerCase()===name.toLowerCase());
+      if(dup){ this.openCategory(dup.id); return; }
+      const id=uid();
+      Data.state.categories.push({id, name, items:[]});
+      Data.save();
+      inp.value="";
+      this.openCategory(id);
+    },
+
+    openCategory(catId){
+      const cat=getCategory(catId);
+      if(!cat){ this.open(); return; }
+      UI.setSub(`Setup • ${cat.name}`);
+      const items=(cat.items||[]).slice().sort((a,b)=>a.code.localeCompare(b.code));
+
+      UI.render(`
+        <div class="card">
+          <div class="cardHd">
+            <div>
+              <h2>Setup • ${escapeHtml(cat.name)}</h2>
+              <p>Modifica in linea. Elimina quando serve.</p>
+            </div>
+            <div class="rowBtns">
+              <button class="smallBtn" onclick="Setup.open()">← Categorie</button>
+              <button class="smallBtn danger" onclick="Setup.deleteCategory('${cat.id}')">Elimina categoria</button>
+            </div>
+          </div>
+          <div class="cardBd">
+            <div class="label">Nome categoria</div>
+            <input value="${escapeHtml(cat.name)}"
+              onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+              onblur="Setup.renameCategory('${cat.id}', this.value)" />
+
+            <div class="hr"></div>
+
+            <div class="card">
+              <div class="cardHd">
+                <div><h2>➕ Nuovo articolo</h2><p>Scrivi e INVIO</p></div>
+              </div>
+              <div class="cardBd">
+                <form id="formAddItem" class="stack">
+                  <input id="itemCode" placeholder="Codice (es. 1C)" autocomplete="off"/>
+                  <input id="itemDesc" placeholder="Descrizione (opzionale)" autocomplete="off"/>
+<input id="itemMin" type="number" inputmode="numeric" step="any" placeholder="Giacenza minima (opzionale)" autocomplete="off"/>
+                  <button class="smallBtn primary" type="submit">Aggiungi articolo</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="label">Articoli</div>
+            <div class="stack">
+              ${items.length ? items.map(it=>`
+                <div class="card">
+                  <div class="cardBd">
+                    <div class="inline2">
+                      <div>
+                        <div class="label" style="margin:0 0 8px;">Codice</div>
+                        <input value="${escapeHtml(it.code)}"
+                          onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                          onblur="Setup.updateItem('${cat.id}','${it.id}','code', this.value)" />
+                      </div>
+                      <div>
+                        <div class="label" style="margin:0 0 8px;">Descrizione</div>
+                        <input value="${escapeHtml(it.desc||"")}" placeholder="—"
+                          onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                          onblur="Setup.updateItem('${cat.id}','${it.id}','desc', this.value)" />
+                      </div>
+                    </div>
+                    <div style="margin-top:10px;">
+                      <div class="label" style="margin:0 0 8px;">Giacenza minima (opzionale)</div>
+                      <input type="number" inputmode="numeric" step="any"
+                        value="${escapeHtml((it.minStock===0 || it.minStock) ? it.minStock : "")}"
+                        placeholder="Es. 10"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault(); this.blur();}"
+                        oninput="Setup.debouncedUpdate('${cat.id}','${it.id}','minStock', this)"
+                        onchange="Setup.updateItem('${cat.id}','${it.id}','minStock', this.value)"
+                        onblur="Setup.updateItem('${cat.id}','${it.id}','minStock', this.value)" />
+                    </div>
+                    <div class="rowBtns">
+                      <button class="smallBtn danger" onclick="Setup.deleteItem('${cat.id}','${it.id}')">Elimina articolo</button>
+                    </div>
+                  </div>
+                </div>
+              `).join("") : `<div class="muted">Nessun articolo. Aggiungilo sopra.</div>`}
+            </div>
+          </div>
+        </div>
+      `);
+
+      setTimeout(()=>{
+        const f=document.getElementById("formAddItem");
+        const code=document.getElementById("itemCode");
+        const desc=document.getElementById("itemDesc");
+        f?.addEventListener("submit",(e)=>{e.preventDefault(); Setup.addItem(cat.id);});
+        code?.addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); Setup.addItem(cat.id); }});
+        desc?.addEventListener("keydown",(e)=>{ if(e.key==="Enter"){ e.preventDefault(); Setup.addItem(cat.id); }});
+        code?.focus();
+      },0);
+
+      Data.state.last={screen:"setupCat", catId};
+      Data.save();
+    },
+
+    renameCategory(catId,value){
+      const name=(value||"").trim();
+      if(!name){ alert("Nome categoria vuoto."); this.openCategory(catId); return; }
+      const dup=Data.state.categories.find(c=>c.id!==catId && c.name.toLowerCase()===name.toLowerCase());
+      if(dup){ alert("Esiste già una categoria con questo nome."); this.openCategory(catId); return; }
+      const cat=getCategory(catId);
+      if(!cat) return;
+      cat.name=name;
+      Data.save();
+      UI.setSub(`Setup • ${cat.name}`);
+    },
+
+    deleteCategory(catId){
+      const cat=getCategory(catId);
+      if(!cat) return;
+      const n=(cat.items||[]).length;
+      if(!confirm(`Elimino la categoria "${cat.name}" (${n} articoli). Sicuro?`)) return;
+
+      const ids=new Set((cat.items||[]).map(i=>i.id));
+      Data.state.inventories.forEach(inv=>{
+        Object.keys(inv.counts||{}).forEach(itemId=>{ if(ids.has(itemId)) delete inv.counts[itemId]; });
+      });
+
+      Data.state.categories = Data.state.categories.filter(c=>c.id!==catId);
+      Data.save();
+      this.open();
+    },
+
+    addItem(catId){
+      const cat=getCategory(catId);
+      if(!cat) return;
+      const code=(document.getElementById("itemCode").value||"").trim();
+      const desc=(document.getElementById("itemDesc").value||"").trim();
+      const minRaw=(document.getElementById("itemMin")?.value||"").trim().replace(",",".");
+      const minStock = (minRaw==="") ? null : Number(minRaw);
+      if(!code) return;
+
+      cat.items ??= [];
+      const dup=(cat.items||[]).find(i=>(i.code||"").toLowerCase()===code.toLowerCase());
+      if(dup){
+        document.getElementById("itemCode").value="";
+        document.getElementById("itemDesc").value="";
+      if(document.getElementById("itemMin")) document.getElementById("itemMin").value="";
+        return;
+      }
+      cat.items.push({id:uid(), code, desc, minStock: (Number.isFinite(minStock) ? minStock : null)});
+      Data.save();
+      document.getElementById("itemCode").value="";
+      document.getElementById("itemDesc").value="";
+      if(document.getElementById("itemMin")) document.getElementById("itemMin").value="";
+      this.openCategory(catId);
+    },
+
+    debouncedUpdate(catId,itemId,field,el){
+      try{
+        const v = el.value;
+        clearTimeout(el._t);
+        el._t = setTimeout(()=>{ Setup.updateItem(catId,itemId,field,v); }, 250);
+      }catch(e){}
+    },
+
+    updateItem(catId,itemId,field,value){
+      const cat=getCategory(catId);
+      if(!cat) return;
+      const it=(cat.items||[]).find(i=>i.id===itemId);
+      if(!it) return;
+
+      if(field==="code"){
+        const v=(value||"").trim();
+        if(!v){ alert("Codice vuoto."); this.openCategory(catId); return; }
+        const dup=(cat.items||[]).find(i=>i.id!==itemId && (i.code||"").toLowerCase()===v.toLowerCase());
+        if(dup){ alert("Codice già presente in questa categoria."); this.openCategory(catId); return; }
+        it.code=v;
+      }else if(field==="minStock"){
+        const raw=String(value||"").trim().replace(",",".");
+        if(raw===""){ it.minStock=null; }
+        else{
+          const n=Number(raw);
+          if(!Number.isFinite(n) || n<0){ alert("Giacenza minima non valida."); return; }
+          it.minStock=n;
+        }
+      }else{
+        it.desc=(value||"").trim();
+      }
+      Data.save();
+    },
+
+    deleteItem(catId,itemId){
+      const cat=getCategory(catId);
+      if(!cat) return;
+      const it=(cat.items||[]).find(i=>i.id===itemId);
+      if(!it) return;
+      if(!confirm(`Elimino l'articolo "${it.code}". Sicuro?`)) return;
+
+      cat.items=(cat.items||[]).filter(i=>i.id!==itemId);
+      Data.state.inventories.forEach(inv=>{ if(inv.counts?.[itemId]) delete inv.counts[itemId]; });
+      Data.save();
+      this.openCategory(catId);
+    }
+  };
+
+  const Inventory = {
+    startNew(){
+      const name=`INVENTARIO IMBALLAGGI ${todayLabel()}`;
+      const invId=uid();
+      const inv={id:invId, name, createdAt:nowISO(), updatedAt:nowISO(), notes:"", counts:{}};
+      Data.state.inventories.unshift(inv);
+      Data.save();
+      this.open(invId);
+    },
+
+    open(invId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv){ alert("Inventario non trovato."); Home.open(); return; }
+
+      const cats=Data.state.categories.slice().sort((a,b)=>a.name.localeCompare(b.name));
+      UI.setSub(inv.name);
+
+      if(!cats.length || !itemsCount()){
+        UI.render(`
+          <div class="card">
+            <div class="cardHd">
+              <div><h2>${escapeHtml(inv.name)}</h2><p>Prima crea categorie e articoli nel Setup.</p></div>
+              <div class="rowBtns">
+                <button class="smallBtn" onclick="Home.open()">← Menu</button>
+                <button class="smallBtn primary" onclick="Setup.open()">Vai al Setup</button>
+              </div>
+            </div>
+            <div class="cardBd"><div class="muted">Nessun setup presente.</div></div>
+          </div>
+        `);
+        Data.state.last={screen:"inventory", invId};
+        Data.save();
+        return;
+      }
+
+      UI.render(`
+        <div class="card">
+          <div class="cardHd">
+            <div>
+              <h2>${escapeHtml(inv.name)}</h2>
+              <p>Seleziona una categoria.</p>
+            </div>
+            <div class="rowBtns">
+              <button class="smallBtn" onclick="Home.open()">← Menu</button>
+              <button class="smallBtn" onclick="ViewInventories.open()">📚 Inventari</button>
+              <button class="smallBtn primary" onclick="Export.excel('${invId}')">📄 Excel</button>
+              <button class="smallBtn danger" onclick="Inventory.deleteInventory('${invId}')">🗑️ Elimina</button>
+            </div>
+          </div>
+          <div class="cardBd">
+            <div class="stack">
+              ${cats.map((c,idx)=>{
+                const colorClass=["c1","c2","c3","c4","c5","c6"][idx%6];
+                const total=Inventory.categoryTotal(invId, c.id);
+                return `
+                  <button class="bigBtn ${colorClass}" onclick="Inventory.openCategory('${invId}','${c.id}')">
+                    <div>
+                      <div class="label">${escapeHtml(c.name)}</div>
+                      <div class="hint">${(c.items?.length||0)} articoli • Totale categoria: ${fmtQty(total)}</div>
+                    </div>
+                    <div class="right">→</div>
+                  </button>
+                `;
+              }).join('<div style="height:10px"></div>')}
+            </div>
+
+            <div class="hr"></div>
+            <div class="label">Note inventario (generali)</div>
+            <textarea id="invNotes" placeholder="Note generali...">${escapeHtml(inv.notes||"")}</textarea>
+            <div class="rowBtns">
+              <button class="smallBtn primary" onclick="Inventory.saveNotes('${invId}')">Salva note</button>
+              </div>
+          </div>
+        </div>
+      `);
+
+      Data.state.last={screen:"inventory", invId};
+      Data.save();
+    },
+
+    openCategory(invId, catId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      const cat=getCategory(catId);
+      if(!inv || !cat){ this.open(invId); return; }
+
+      UI.setSub(`${inv.name} • ${cat.name}`);
+
+      const items=(cat.items||[]).slice().sort((a,b)=>a.code.localeCompare(b.code));
+
+      UI.render(`
+        <div class="card">
+          <div class="cardHd">
+            <div>
+              <h2>${escapeHtml(cat.name)}</h2>
+              <p>Tap articolo = inserisci quantità • Tap TOTALE = dettagli/modifica/elimina</p>
+            </div>
+            <div class="rowBtns">
+              <button class="smallBtn" onclick="Inventory.open('${invId}')">← Categorie</button>
+              <button class="smallBtn primary" onclick="Export.excel('${invId}')">📄 Excel</button>
+              </div>
+          </div>
+          <div class="cardBd">
+            <div class="stack">
+              ${items.length ? items.map(it=>{
+                const entries=inv.counts?.[it.id]||[];
+                const total=sumEntries(entries);
+                const min=Number(it.minStock);
+                const hasMin=Number.isFinite(min);
+                const below=hasMin && total < min;
+                return `
+                  <div class="itemRow">
+                    <button class="itemBtn" onclick="UI.openQty('${invId}','${it.id}')">
+                      <div style="min-width:0">
+                        <div class="name">${escapeHtml(it.code)}</div>
+                        ${it.desc ? `<div class="desc">${escapeHtml(it.desc)}</div>` : `<div class="desc">—</div>`}
+                      </div>
+                      <div class="arrow">➕</div>
+                    </button>
+                    <div class="totalBox ${entries.length===0 ? "zero" : "has"} ${below ? "below" : ""}" onclick="UI.openDetails('${invId}','${it.id}')">
+                      <div class="t">TOTALE</div>
+                      <div class="v">${fmtQty(total)}</div>
+                      ${hasMin ? '<div class="minLine">Min: ' + fmtQty(min) + '</div>' : ''}
+                    </div>
+                  </div>
+                `;
+              }).join('<div style="height:10px"></div>') : `<div class="muted">Nessun articolo in questa categoria (aggiungilo nel Setup).</div>`}
+            </div>
+          </div>
+        </div>
+      `);
+
+      Data.state.last={screen:"inventoryCat", invId, catId};
+      Data.save();
+    },
+
+    saveNotes(invId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      inv.notes=document.getElementById("invNotes").value || "";
+      inv.updatedAt=nowISO();
+      Data.save();
+      alert("Note salvate ✅");
+    },
+
+    addEntry(invId,itemId,qty,note){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      inv.counts ??= {};
+      inv.counts[itemId] ??= [];
+      inv.counts[itemId].push({id:uid(), qty, note, at: nowISO()});
+      inv.updatedAt=nowISO();
+      Data.save();
+    },
+
+    updateEntryQty(invId,itemId,entryId,value){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      const arr=inv.counts?.[itemId]||[];
+      const e=arr.find(x=>x.id===entryId);
+      if(!e) return;
+      const q=Number(String(value).trim().replace(",","."));
+      if(!Number.isFinite(q)){ alert("Quantità non valida."); return; }
+      e.qty=q;
+      inv.updatedAt=nowISO();
+      Data.save();
+      UI.openDetails(invId,itemId);
+      // refresh category page totals behind dialog
+      const last=Data.state.last||{};
+      if(last.screen==="inventoryCat" && last.invId===invId && last.catId){
+        Inventory.openCategory(invId,last.catId);
+      }
+    },
+
+    updateEntryNote(invId,itemId,entryId,value){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      const arr=inv.counts?.[itemId]||[];
+      const e=arr.find(x=>x.id===entryId);
+      if(!e) return;
+      e.note=(value||"").trim();
+      inv.updatedAt=nowISO();
+      Data.save();
+    },
+
+    deleteEntry(invId,itemId,entryId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      inv.counts[itemId]=(inv.counts?.[itemId]||[]).filter(e=>e.id!==entryId);
+      inv.updatedAt=nowISO();
+      Data.save();
+      UI.openDetails(invId,itemId);
+      const last=Data.state.last||{};
+      if(last.screen==="inventoryCat" && last.invId===invId && last.catId){
+        Inventory.openCategory(invId,last.catId);
+      }
+    },
+
+    clearItem(invId,itemId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      const total=sumEntries(inv.counts?.[itemId]||[]);
+      if(!confirm(`Azzero questo articolo (totale ${fmtQty(total)}). Sicuro?`)) return;
+      if(inv.counts?.[itemId]) delete inv.counts[itemId];
+      inv.updatedAt=nowISO();
+      Data.save();
+      UI.openDetails(invId,itemId);
+      const last=Data.state.last||{};
+      if(last.screen==="inventoryCat" && last.invId===invId && last.catId){
+        Inventory.openCategory(invId,last.catId);
+      }
+    },
+
+    deleteInventory(invId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) return;
+      if(!confirm(`Elimino "${inv.name}". Sicuro?`)) return;
+      Data.state.inventories = Data.state.inventories.filter(i=>i.id!==invId);
+      Data.save();
+      Home.open();
+    },
+
+    categoryTotal(invId,catId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      const cat=getCategory(catId);
+      if(!inv||!cat) return 0;
+      let total=0;
+      (cat.items||[]).forEach(it=>{ total += sumEntries(inv.counts?.[it.id]||[]); });
+      return total;
+    }
+  };
+
+  function invStats(inv){
+    const ids=Object.keys(inv.counts||{});
+    const itemsWithCounts=ids.filter(id=>(inv.counts[id]||[]).length>0).length;
+    const grand=ids.reduce((a,id)=>a+sumEntries(inv.counts[id]||[]),0);
+    return {itemsWithCounts, grand};
+  }
+
+  const ViewInventories = {
+    open(){
+      UI.setSub("Inventari salvati");
+      const invs=Data.state.inventories.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+
+      UI.render(`
+        <div class="card">
+          <div class="cardHd">
+            <div><h2>Inventari</h2><p>Apri, esporta Excel o condividi.</p></div>
+            <div class="rowBtns">
+              <button class="smallBtn" onclick="Home.open()">← Menu</button>
+              <button class="smallBtn primary" onclick="Inventory.startNew()">🆕 Nuovo</button>
+            </div>
+          </div>
+          <div class="cardBd">
+            <div class="stack">
+              ${invs.length ? invs.map((inv,idx)=>{
+                const s=invStats(inv);
+                const colorClass=["c1","c2","c3","c4","c5","c6"][idx%6];
+                return `
+                  <button class="bigBtn ${colorClass}" onclick="Inventory.open('${inv.id}')">
+                    <div>
+                      <div class="label">${escapeHtml(inv.name)}</div>
+                      <div class="hint">Creato: ${fmtDate(inv.createdAt)} • Articoli: ${s.itemsWithCounts} • Totale: ${fmtQty(s.grand)}</div>
+                    </div>
+                    <div class="right">→</div>
+                  </button>
+                  <div class="rowBtns" style="margin-top:-6px; margin-bottom:10px;">
+                    <button class="smallBtn" onclick="Export.excel('${inv.id}')">📄 Excel</button>
+                    </div>
+                `;
+              }).join("") : `<div class="muted">Nessun inventario. Crealo dal menu.</div>`}
+            </div>
+          </div>
+        </div>
+      `);
+
+      Data.state.last={screen:"viewInventories"};
+      Data.save();
+    }
+  };
+
+
+  // ===== Export
+  const Export = {
+    buildCSV(invId){
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) throw new Error("Inventario non trovato.");
+      const cats=Data.state.categories.slice().sort((a,b)=>a.name.localeCompare(b.name));
+      const rows=[];
+      cats.forEach(cat=>{
+        (cat.items||[]).slice().sort((a,b)=>a.code.localeCompare(b.code)).forEach(item=>{
+          const entries=inv.counts?.[item.id]||[];
+          const total=sumEntries(entries);
+          const details=entries.map(e=>{
+            const n=(e.note||"").trim();
+            return `${fmtQty(e.qty)}${n ? " ("+n+")" : ""} @ ${fmtDate(e.at)}`;
+          }).join(" | ");
+          rows.push({Categoria:cat.name, Articolo:item.code, Descrizione:item.desc||"", Totale: total, Note: inv.notes||"", Dettaglio: details});
+        });
+      });
+      const headers=["Categoria","Articolo","Descrizione","Totale","Note","Dettaglio"];
+      const csv = makeCSV(rows, headers);
+      const filename = `${safeFile(inv.name)}.csv`;
+      const blob = new Blob([csv], {type:"text/csv;charset=utf-8"});
+      return {blob, filename};
+    },
+
+    buildExcel(invId){
+      if(typeof XLSX === "undefined") throw new Error("__XLSX_NOT_READY__");
+      const inv=Data.state.inventories.find(i=>i.id===invId);
+      if(!inv) throw new Error("Inventario non trovato.");
+      const cats=Data.state.categories.slice().sort((a,b)=>a.name.localeCompare(b.name));
+      const rows=[];
+      rows.push({Categoria:"", Articolo:"", Descrizione:`Inventario: ${inv.name}`, Totale:"", Note:(inv.notes||""), Dettaglio:""});
+      rows.push({Categoria:"", Articolo:"", Descrizione:`Creato: ${fmtDate(inv.createdAt)} - Aggiornato: ${fmtDate(inv.updatedAt)}`, Totale:"", Note:"", Dettaglio:""});
+      rows.push({Categoria:"", Articolo:"", Descrizione:"", Totale:"", Note:"", Dettaglio:""});
+
+      cats.forEach(cat=>{
+        (cat.items||[]).slice().sort((a,b)=>a.code.localeCompare(b.code)).forEach(item=>{
+          const entries=inv.counts?.[item.id]||[];
+          const total=sumEntries(entries);
+          const details=entries.map(e=>{
+            const n=(e.note||"").trim();
+            return `${fmtQty(e.qty)}${n ? " ("+n+")" : ""} @ ${fmtDate(e.at)}`;
+          }).join(" | ");
+          rows.push({Categoria:cat.name, Articolo:item.code, Descrizione:item.desc||"", Totale:total, Note:"", Dettaglio:details});
+        });
+      });
+
+      const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.json_to_sheet(rows,{skipHeader:false});
+      ws["!cols"]=[{wch:18},{wch:12},{wch:40},{wch:10},{wch:34},{wch:90}];
+      XLSX.utils.book_append_sheet(wb,ws,"Inventario");
+
+      const filename=`${safeFile(inv.name)}.xlsx`;
+      const out=XLSX.write(wb,{bookType:"xlsx", type:"array"});
+      const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+      return {blob, filename};
+    },
+
+    async excel(invId){
+      try{
+        const ok = await loadXLSX();
+        if(ok){
+          const {blob, filename}=this.buildExcel(invId);
+          Data.download(filename, blob);
+          return;
+        }
+        const p=this.buildCSV(invId);
+        Data.download(p.filename, p.blob);
+        alert('Non riesco a caricare la libreria Excel: ho esportato un CSV che Excel apre comunque.');
+      }catch(e){
+        console.error(e);
+        alert('Errore esportazione.');
+      }
+    },
+  };
+
+
+
+  // ===== Boot
+  (function boot(){
+    try{ Data.load(); }catch(e){ console.error(e); }
+    try{ Data.normalize(); }catch(e){}
+
+    // Header buttons
+    try{
+      const h=document.getElementById("btnHome");
+      const b=document.getElementById("btnBackup");
+      const r=document.getElementById("btnReset");
+      if(h) h.onclick = ()=>Home.open();
+      if(b) b.onclick = ()=>UI.openBackup();
+      if(r) r.onclick = ()=>Data.resetAll();
+    }catch(e){}
+
+    // Cloud-only: richiede login prima di usare l'app
+    try{
+      const root=document.getElementById("view");
+      if(root){
+        root.innerHTML = `
+          <div class="card" style="max-width:720px; margin:20px auto;">
+            <div style="font-weight:900; font-size:18px;">Accesso richiesto</div>
+            <div class="sub" style="margin-top:8px;">Questa versione salva e legge SOLO dal cloud. Premi SYNC e fai login per vedere gli inventari.</div>
+            <div class="row" style="margin-top:12px; gap:10px;">
+              <button class="btn big primary" onclick="window.openAuth()">SYNC / Login</button>
+            </div>
+          </div>`;
+      }
+    }catch(e){}
+  })();
+
+// ===== SYNC (Firebase)
+  // ✅ Qui il firebaseConfig è INCORPORATO nel file.
+  // Compilalo UNA volta (se non l'hai già fatto in versioni precedenti) e poi in app inserisci solo email/password.
+  const firebaseConfig = {
+    apiKey: "INCOLLA_API_KEY",
+    authDomain: "INCOLLA_AUTH_DOMAIN",
+    databaseURL: "INCOLLA_DATABASE_URL",
+    projectId: "INCOLLA_PROJECT_ID",
+    appId: "INCOLLA_APP_ID",
+  };
+
+  function openAuth(){
+    const m=document.getElementById("authModal");
+    if(!m) return;
+    m.style.display="flex";
+    try{ window.FirebaseSync.refreshStatus(); }catch(e){}
+  }
+  function closeAuth(){
+    const m=document.getElementById("authModal");
+    if(!m) return;
+    m.style.display="none";
+  }
+  window.openAuth = openAuth;
+  window.closeAuth = closeAuth;
+
+  window.FirebaseSync = (() => {
+    let inited=false;
+    let initErr=null;
+    let savingTimer=null;
+    const clientId = (crypto?.randomUUID ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2)));
+
+    const CLOUD_PATH = "inventario_imballaggi/v4/state";
+
+    const statusEl = ()=>document.getElementById("authStatus");
+    function setStatus(msg){
+      const el=statusEl();
+      if(el) el.textContent = msg || "";
+    }
+
+    function hasPlaceholders(cfg){
+      const s = JSON.stringify(cfg||{});
+      return s.includes("INCOLLA_");
+    }
+
+    function init(){
+      if(inited) return true;
+      initErr=null;
+
+      if(typeof window.firebase === "undefined"){
+        initErr = "Firebase non caricato (offline o script bloccati).";
+        setStatus(initErr);
+        return false;
+      }
+
+      if(!firebaseConfig || typeof firebaseConfig !== "object"){
+        initErr = "firebaseConfig mancante nel file.";
+        setStatus(initErr);
+        return false;
+      }
+
+      if(hasPlaceholders(firebaseConfig) || !firebaseConfig.databaseURL || String(firebaseConfig.databaseURL).includes("INCOLLA_")){
+        initErr = "firebaseConfig non compilato: apri il file HTML e incolla i valori reali, poi ricarica la pagina.";
+        setStatus(initErr);
+        return false;
+      }
+
+      try{
+        // evita doppia init
+        if(!firebase.apps || firebase.apps.length===0){
+          firebase.initializeApp(firebaseConfig);
+        }
+        inited=true;
+        return true;
+      }catch(e){
+        console.error(e);
+        initErr = "Errore inizializzazione Firebase (config errata?).";
+        setStatus(initErr);
+        return false;
+      }
+    }
+
+    function auth(){
+      if(!init()) return null;
+      try{ return firebase.auth(); }catch(e){ console.error(e); setStatus("Auth non disponibile."); return null; }
+    }
+    function db(){
+      if(!init()) return null;
+      try{ return firebase.database(); }catch(e){ console.error(e); setStatus("Database non disponibile."); return null; }
+    }
+
+    function user(){
+      const a=auth();
+      return a ? a.currentUser : null;
+    }
+
+    function isLogged(){
+      return !!user();
+    }
+
+    async function login(){
+      const email=(document.getElementById("authEmail")?.value||"").trim();
+      const pass=(document.getElementById("authPass")?.value||"").trim();
+      if(!email || !pass){ alert("Inserisci email e password."); return; }
+      const a=auth(); if(!a) return;
+
+      try{
+        try{ await a.setPersistence(firebase.auth.Auth.Persistence.LOCAL); }catch(e){}
+        await a.signInWithEmailAndPassword(email, pass);
+        setStatus("✅ Accesso effettuato: " + (a.currentUser?.email || ""));
+      }catch(e){
+        console.error(e);
+        setStatus("❌ Login fallito: " + (e?.message || "errore"));
+      }
+    }
+
+    async function logout(){
+      const a=auth(); if(!a) return;
+      try{
+        await a.signOut();
+        setStatus("Sei uscito.");
+      }catch(e){
+        console.error(e);
+        setStatus("Errore logout.");
+      }
+    }
+
+    async function pushLocal(silent=false){
+      const d=db(); if(!d) return;
+      const u=user();
+      if(!u){ if(!silent) alert("Prima fai login."); setStatus("⚠️ Non autenticato."); return; }
+
+      try{
+        const payload = {
+          data: Data.state,
+          meta: {
+            updatedAt: Date.now(),
+            client: clientId,
+            by: u.email || u.uid || "user"
+          }
+        };
+        await d.ref(CLOUD_PATH).set(payload);
+        if(!silent) setStatus("⬆️ Caricato su cloud (" + fmtDate(new Date()) + ")");
+      }catch(e){
+        console.error(e);
+        if(!silent) setStatus("❌ Upload fallito: " + (e?.message || "errore"));
+      }
+    }
+
+    async function pullCloud(){
+      const d=db(); if(!d) return;
+      const u=user();
+      if(!u){ alert("Prima fai login."); setStatus("⚠️ Non autenticato."); return; }
+
+      try{
+        const snap = await d.ref(CLOUD_PATH).get();
+        if(!snap.exists()){
+          setStatus("Nessun dato su cloud (ancora).");
+          return;
+        }
+        const payload = snap.val();
+        const cloudData = payload?.data;
+        if(!cloudData || typeof cloudData!=="object"){
+          setStatus("Dati cloud non validi.");
+          return;
+        }
+        cloudData.categories ??= [];
+        cloudData.inventories ??= [];
+        cloudData.last ??= {screen:"home"};
+
+        Data.state = cloudData;
+        try{ Data.normalize(); }catch(e){}
+        UI.goHome(true);
+        setStatus("⬇️ Dati cloud caricati (" + fmtDate(new Date()) + ")");
+        }catch(e){
+        console.error(e);
+        setStatus("❌ Download fallito: " + (e?.message || "errore"));
+      }
+    }
+
+    function scheduleSave(){
+      // autosave solo se loggato
+      if(savingTimer) clearTimeout(savingTimer);
+      savingTimer = setTimeout(() => {
+        try{
+          if(user()) pushLocal(true);
+        }catch(e){}
+      }, 2000);
+    }
+
+    function refreshStatus(){
+      if(!init()){
+        if(initErr) setStatus(initErr);
+        return;
+      }
+      const u=user();
+      setStatus(u ? ("✅ Loggato: " + (u.email||"")) : "Non loggato.");
+    }
+
+
+    async function clearCloud(){
+      const d=db(); if(!d) return;
+      const u=user();
+      if(!u){ setStatus("⚠️ Non autenticato."); return; }
+      try{
+        await d.ref(CLOUD_PATH).set(null);
+        setStatus("🧹 Dati cloud cancellati.");
+      }catch(e){
+        console.error(e);
+        setStatus("❌ Errore cancellazione cloud: " + (e?.message || "errore"));
+      }
+    }
+
+    function ensureAuthScreen(){
+      // schermata semplice: richiede login prima di usare l'app
+      const root = document.getElementById("view");
+      if(!root) return;
+      root.innerHTML = `
+        <div class="card" style="max-width:720px; margin:20px auto;">
+          <div style="font-weight:900; font-size:18px;">Accesso richiesto</div>
+          <div class="sub" style="margin-top:8px;">Questa versione salva e legge SOLO dal cloud. Premi SYNC e fai login per vedere gli inventari.</div>
+          <div class="row" style="margin-top:12px; gap:10px;">
+            <button class="btn big primary" onclick="window.openAuth()">SYNC / Login</button>
+          </div>
+        </div>`;
+    }
+
+    function attachAuthListener(){
+      const a=auth(); if(!a) return;
+      try{
+        a.onAuthStateChanged(async (u)=>{
+          if(u){
+            refreshStatus();
+            // Carica sempre dal cloud appena loggato
+            try{ await pullCloud(); }catch(e){}
+            // Se cloud vuoto, inizializza e salva subito
+            try{
+              const d=db();
+              const snap = await d.ref(CLOUD_PATH).get();
+              if(!snap.exists()){
+                Data.load(); // empty normalized
+                await pushLocal(true);
+              }
+            }catch(e){}
+          }else{
+            refreshStatus();
+            // reset in-memory
+            Data.load();
+            ensureAuthScreen();
+          }
+        });
+      }catch(e){ console.error(e); }
+    }
+
+    attachAuthListener();
+
+    return { login, logout, pushLocal, pullCloud, scheduleSave, refreshStatus, clearCloud, showGate: ensureAuthScreen, isLogged };
+  })();
+  // ===== BOOT (cloud-only)
+  (function(){
+    // Non usare storage locale: lo stato vive in memoria e viene caricato dal cloud dopo login.
+    try{ Data.load(); }catch(e){}
+    // Evita flash / gate prematuro: aspettiamo onAuthStateChanged.
+    try{
+      const v=document.getElementById("view");
+      if(v){
+        v.innerHTML = `<div class="card" style="max-width:720px; margin:20px auto;">
+          <div style="font-weight:900; font-size:18px;">Caricamento…</div>
+          <div class="sub" style="margin-top:8px;">Inizializzo autenticazione e dati cloud.</div>
+        </div>`;
+      }
+    }catch(e){}
+    try{ window.FirebaseSync && window.FirebaseSync.refreshStatus(); }catch(e){}
+    // Fix critico: impedisci che il form quantità ricarichi la pagina (altrimenti perdi la sessione e vedi solo il gate)
+    try{
+      const f=document.getElementById("qtyForm");
+      if(f){
+        f.addEventListener("submit",(ev)=>{
+          ev.preventDefault();
+          ev.stopPropagation();
+          const invId=document.getElementById("qtyInvId").value;
+          const itemId=document.getElementById("qtyItemId").value;
+          const raw=document.getElementById("qtyInput").value;
+          const note=document.getElementById("qtyNote").value || "";
+          const q=Number(String(raw).trim().replace(",","."));
+          if(!Number.isFinite(q)){ alert("Quantità non valida."); return; }
+          try{ Inventory.addEntry(invId,itemId,q,note); }catch(e){ console.error(e); alert("Errore salvataggio quantità."); return; }
+          try{ UI.closeQty(); }catch(e){}
+          // aggiorna la schermata dietro al dialog
+          try{
+            const last=Data.state.last||{};
+            if(last.screen==="inventoryCat" && last.invId===invId && last.catId){
+              Inventory.openCategory(invId,last.catId);
+            }
+          }catch(e){}
+        });
+      }
+    }catch(e){ console.error(e); }
+  })();
+</script>
+
+  <div class="modal" id="authModal" style="display:none;">
+    <div class="sheet">
+      <div class="row" style="justify-content:space-between; align-items:center;">
+        <div style="font-weight:900; font-size:18px;">SYNC</div>
+        <button class="chip" onclick="window.closeAuth()">Chiudi</button>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="sub" style="opacity:.9;">Accedi per caricare e vedere gli inventari (solo cloud).</div>
+        <div class="label" style="margin-top:10px;">Email</div>
+        <input id="authEmail" type="email" inputmode="email" autocomplete="username" value=""/>
+        <div class="label" style="margin-top:10px;">Password</div>
+        <input id="authPass" type="password" autocomplete="current-password" value=""/>
+        <div class="row" style="margin-top:12px; gap:10px;">
+          <button class="btn big primary" onclick="window.FirebaseSync.login()">Accedi</button>
+          <button class="btn big alt" onclick="window.FirebaseSync.logout()">Esci</button>
+        </div>
+
+        <div class="row" style="margin-top:12px; gap:10px;">
+          <button class="btn big primary" onclick="window.FirebaseSync.pullCloud()">↻ Aggiorna dal cloud</button>
+          <button class="btn big" onclick="window.FirebaseSync.pushLocal()">⬆️ Salva ora</button>
+        </div>
+
+        <div class="sub" id="authStatus" style="margin-top:10px;"></div>
+        <div class="sub" style="margin-top:8px; opacity:.85;">Se sei offline non potrai caricare/vedere i dati: questa versione è cloud-only.</div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
