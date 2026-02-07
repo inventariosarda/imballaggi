@@ -241,25 +241,22 @@
     .modal{position:fixed; inset:0; display:none; align-items:flex-end; justify-content:center; background:rgba(0,0,0,.55); z-index:99999; padding:14px;}
     .modal .sheet{width:min(720px,100%); background:rgba(10,14,20,.96); border:1px solid rgba(255,255,255,.08); border-radius:18px; padding:14px; box-shadow:0 12px 40px rgba(0,0,0,.45);}
     .modal input{width:100%;}
-  
-    /* Auth modal helpers */
-    .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
-    .btn{
-      border:1px solid rgba(255,255,255,.16);
-      background: rgba(255,255,255,.10);
-      padding:12px 14px;
-      border-radius: 16px;
-      cursor:pointer;
-      font-weight:950;
-      min-height: 48px;
-    }
-    .btn.big{min-width:140px}
-    .btn.alt{background: rgba(255,107,107,.12); border-color: rgba(255,107,107,.55)}
-    .btn.primary{background: rgba(34,211,238,.18); border-color: rgba(34,211,238,.45)}
-    .btn:active{transform: translateY(1px)}
-    #authModal textarea{min-height:90px}
-
   </style>
+
+<script>
+(function(){
+  window.openAuth = function(){
+    var m=document.getElementById('authModal');
+    if(!m){ alert('AUTH MODAL mancante'); return; }
+    m.style.display='flex';
+  };
+  window.closeAuth = function(){
+    var m=document.getElementById('authModal');
+    if(m) m.style.display='none';
+  };
+})();
+</script>
+
 </head>
 <body>
 <header>
@@ -268,7 +265,7 @@
       <div class="sub" id="subTitle">Menu principale</div>
     </div>
     <div class="actions">
-        <button class="chip" onclick="openAuth()">SYNC</button>
+        <button id="btnSync" class="chip" onclick="window.openAuth()">SYNC</button>
       <button class="chip" id="btnHome">🏠 Home</button>
       <button class="chip" id="btnBackup">💾 Backup</button>
       <button class="chip danger" id="btnReset">🧨 Reset</button>
@@ -422,13 +419,13 @@
       localStorage.removeItem(LS_KEY);
       this.load();
       UI.goHome(true);
-      },
+    },
 
-      save(){
-        Data.state._updatedAt = Date.now();
-        Data.saveLocalOnly();
-        try{ window.FirebaseSync.scheduleSave(); }catch(e){}
-      },
+    save(){
+      try{ Data.state._updatedAt = Date.now(); }catch(e){}
+      Data.saveLocalOnly();
+      try{ window.FirebaseSync && window.FirebaseSync.scheduleSave && window.FirebaseSync.scheduleSave(); }catch(e){}
+    },
     download(filename, blob){
       const a=document.createElement("a");
       a.href=URL.createObjectURL(blob);
@@ -1238,206 +1235,56 @@
     },
   };
 
+  // ===== Handlers
 
-  // ===== SYNC (Firebase)
-  // ✅ Qui il firebaseConfig è INCORPORATO nel file.
-  // Compilalo UNA volta (se non l'hai già fatto in versioni precedenti) e poi in app inserisci solo email/password.
-  const firebaseConfig = {
-  apiKey: "AIzaSyDOQTxHXbeGMhimYyBer3lADFqj_5N8Qwo",
-  authDomain: "inventario-imballaggi.firebaseapp.com",
-  databaseURL: "https://inventario-imballaggi-default-rtdb.europe-west1.firebasedatabase.app",
-  projectId: "inventario-imballaggi",
-  storageBucket: "inventario-imballaggi.firebasestorage.app",
-  messagingSenderId: "369436001397",
-  appId: "1:369436001397:web:c50120ad1bd97e1a56243c"
-};
+  document.getElementById("btnHome").addEventListener("click", ()=>Home.open());
+  document.getElementById("btnBackup").addEventListener("click", ()=>UI.openBackup());
+  document.getElementById("btnReset").addEventListener("click", ()=>Data.resetAll());
 
-  function openAuth(){
-    const m=document.getElementById("authModal");
-    if(!m) return;
-    m.style.display="flex";
-    try{ window.FirebaseSync.refreshStatus(); }catch(e){}
+  document.getElementById("qtyForm").addEventListener("submit",(e)=>{
+    e.preventDefault();
+    const invId=document.getElementById("qtyInvId").value;
+    const itemId=document.getElementById("qtyItemId").value;
+    const qtyStr=(document.getElementById("qtyInput").value||"").trim().replace(",",".");
+    const note=(document.getElementById("qtyNote").value||"").trim();
+    const qty=Number(qtyStr);
+    if(!Number.isFinite(qty)){
+      document.getElementById("qtyInput").focus();
+      return;
+    }
+    Inventory.addEntry(invId,itemId,qty,note);
+    UI.closeQty();
+
+    
+    // Haptic feedback (Android / supported browsers)
+    try{
+      if(navigator.vibrate) navigator.vibrate(25);
+    }catch(e){}
+// as requested: after INVIO -> back to list articles (category)
+    const last=Data.state.last||{};
+    if(last.screen==="inventoryCat" && last.invId===invId && last.catId){
+      Inventory.openCategory(invId,last.catId);
+    }else{
+      Inventory.open(invId);
+    }
+  });
+
+  // ===== Boot
+  Data.load();
+  const last=Data.state.last||{screen:"home"};
+  if(last.screen==="inventoryCat" && last.invId && last.catId){
+    Inventory.openCategory(last.invId,last.catId);
+  }else if(last.screen==="inventory" && last.invId){
+    Inventory.open(last.invId);
+  }else if(last.screen==="viewInventories"){
+    ViewInventories.open();
+  }else if(last.screen==="setupCat" && last.catId){
+    Setup.openCategory(last.catId);
+  }else if(last.screen==="setup"){
+    Setup.open();
+  }else{
+    Home.open();
   }
-  function closeAuth(){
-    const m=document.getElementById("authModal");
-    if(!m) return;
-    m.style.display="none";
-  }
-  window.openAuth = openAuth;
-  window.closeAuth = closeAuth;
-
-  window.FirebaseSync = (() => {
-    let inited=false;
-    let initErr=null;
-    let savingTimer=null;
-
-    const CLOUD_PATH = "inventario_imballaggi/v4/state";
-
-    const statusEl = ()=>document.getElementById("authStatus");
-    function setStatus(msg){
-      const el=statusEl();
-      if(el) el.textContent = msg || "";
-    }
-
-    function hasPlaceholders(cfg){
-      const s = JSON.stringify(cfg||{});
-      return s.includes("INCOLLA_");
-    }
-
-    function init(){
-      if(inited) return true;
-      initErr=null;
-
-      if(typeof window.firebase === "undefined"){
-        initErr = "Firebase non caricato (offline o script bloccati).";
-        setStatus(initErr);
-        return false;
-      }
-
-      if(!firebaseConfig || typeof firebaseConfig !== "object"){
-        initErr = "firebaseConfig mancante nel file.";
-        setStatus(initErr);
-        return false;
-      }
-
-      if(hasPlaceholders(firebaseConfig) || !firebaseConfig.databaseURL || String(firebaseConfig.databaseURL).includes("INCOLLA_")){
-        initErr = "firebaseConfig non compilato: apri il file HTML e incolla i valori reali, poi ricarica la pagina.";
-        setStatus(initErr);
-        return false;
-      }
-
-      try{
-        // evita doppia init
-        if(!firebase.apps || firebase.apps.length===0){
-          firebase.initializeApp(firebaseConfig);
-        }
-        inited=true;
-        return true;
-      }catch(e){
-        console.error(e);
-        initErr = "Errore inizializzazione Firebase (config errata?).";
-        setStatus(initErr);
-        return false;
-      }
-    }
-
-    function auth(){
-      if(!init()) return null;
-      try{ return firebase.auth(); }catch(e){ console.error(e); setStatus("Auth non disponibile."); return null; }
-    }
-    function db(){
-      if(!init()) return null;
-      try{ return firebase.database(); }catch(e){ console.error(e); setStatus("Database non disponibile."); return null; }
-    }
-
-    function user(){
-      const a=auth();
-      return a ? a.currentUser : null;
-    }
-
-    async function login(){
-      const email=(document.getElementById("authEmail")?.value||"").trim();
-      const pass=(document.getElementById("authPass")?.value||"").trim();
-      if(!email || !pass){ alert("Inserisci email e password."); return; }
-      const a=auth(); if(!a) return;
-
-      try{
-        await a.signInWithEmailAndPassword(email, pass);
-        setStatus("✅ Accesso effettuato: " + (a.currentUser?.email || ""));
-      }catch(e){
-        console.error(e);
-        setStatus("❌ Login fallito: " + (e?.message || "errore"));
-      }
-    }
-
-    async function logout(){
-      const a=auth(); if(!a) return;
-      try{
-        await a.signOut();
-        setStatus("Sei uscito.");
-      }catch(e){
-        console.error(e);
-        setStatus("Errore logout.");
-      }
-    }
-
-    async function pushLocal(silent=false){
-      const d=db(); if(!d) return;
-      const u=user();
-      if(!u){ if(!silent) alert("Prima fai login."); setStatus("⚠️ Non autenticato."); return; }
-
-      try{
-        const payload = {
-          data: Data.state,
-          meta: {
-            updatedAt: Date.now(),
-            client: (localStorage.getItem("imballaggi_client_id") || (localStorage.setItem("imballaggi_client_id", uid()), localStorage.getItem("imballaggi_client_id"))),
-            by: u.email || u.uid || "user"
-          }
-        };
-        await d.ref(CLOUD_PATH).set(payload);
-        if(!silent) setStatus("⬆️ Caricato su cloud (" + fmtDate(new Date()) + ")");
-      }catch(e){
-        console.error(e);
-        if(!silent) setStatus("❌ Upload fallito: " + (e?.message || "errore"));
-      }
-    }
-
-    async function pullCloud(){
-      const d=db(); if(!d) return;
-      const u=user();
-      if(!u){ alert("Prima fai login."); setStatus("⚠️ Non autenticato."); return; }
-
-      try{
-        const snap = await d.ref(CLOUD_PATH).get();
-        if(!snap.exists()){
-          setStatus("Nessun dato su cloud (ancora).");
-          return;
-        }
-        const payload = snap.val();
-        const cloudData = payload?.data;
-        if(!cloudData || typeof cloudData!=="object"){
-          setStatus("Dati cloud non validi.");
-          return;
-        }
-        if(!confirm("Scarico dal cloud e sovrascrivo i dati locali. Confermi?")) return;
-
-        cloudData.categories ??= [];
-        cloudData.inventories ??= [];
-        cloudData.last ??= {screen:"home"};
-
-        Data.state = cloudData;
-        Data.saveLocalOnly();
-        UI.goHome(true);
-        setStatus("⬇️ Scaricato dal cloud (" + fmtDate(new Date()) + ")");
-      }catch(e){
-        console.error(e);
-        setStatus("❌ Download fallito: " + (e?.message || "errore"));
-      }
-    }
-
-    function scheduleSave(){
-      // autosave solo se loggato
-      if(savingTimer) clearTimeout(savingTimer);
-      savingTimer = setTimeout(() => {
-        try{
-          if(user()) pushLocal(true);
-        }catch(e){}
-      }, 2000);
-    }
-
-    function refreshStatus(){
-      if(!init()){
-        if(initErr) setStatus(initErr);
-        return;
-      }
-      const u=user();
-      setStatus(u ? ("✅ Loggato: " + (u.email||"")) : "Non loggato.");
-    }
-
-    return { login, logout, pushLocal, pullCloud, scheduleSave, refreshStatus };
-  })();
-
 </script>
 
   <div class="modal" id="authModal" style="display:none;">
@@ -1446,28 +1293,29 @@
         <div style="font-weight:900; font-size:18px;">SYNC</div>
         <button class="chip" onclick="window.closeAuth()">Chiudi</button>
       </div>
-
       <div class="card" style="margin-top:12px;">
         <div class="sub" style="opacity:.9;">Accedi per sincronizzare inventari tra dispositivi.</div>
         <div class="label" style="margin-top:10px;">Email</div>
-        <input id="authEmail" type="email" inputmode="email" autocomplete="username" value=""/>
+        <input id="authEmail" type="email" inputmode="email" autocomplete="username" value="inventario@sardaformaggi.local"/>
         <div class="label" style="margin-top:10px;">Password</div>
-        <input id="authPass" type="password" autocomplete="current-password" value=""/>
+        <input id="authPass" type="password" autocomplete="current-password" value="Imperatore26!"/>
         <div class="row" style="margin-top:12px; gap:10px;">
-          <button class="btn big primary" onclick="window.FirebaseSync.login()">Accedi</button>
-          <button class="btn big alt" onclick="window.FirebaseSync.logout()">Esci</button>
+          <button class="btn big" onclick="window.FirebaseSync && window.FirebaseSync.login()">Accedi</button>
+          <button class="btn big alt" onclick="window.FirebaseSync && window.FirebaseSync.logout()">Esci</button>
         </div>
-
-        <div class="row" style="margin-top:12px; gap:10px;">
-          <button class="btn big primary" onclick="window.FirebaseSync.pushLocal()">⬆️ Carica su cloud</button>
-          <button class="btn big" onclick="window.FirebaseSync.pullCloud()">⬇️ Scarica dal cloud</button>
-        </div>
-
         <div class="sub" id="authStatus" style="margin-top:10px;"></div>
         <div class="sub" style="margin-top:8px; opacity:.85;">Offline: puoi continuare a lavorare. Quando torna rete, sincronizza.</div>
       </div>
     </div>
   </div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function(){
+  var b=document.getElementById('btnSync');
+  if(b){ b.addEventListener('click', function(){ window.openAuth(); }); }
+});
+</script>
 
 </body>
 </html>
