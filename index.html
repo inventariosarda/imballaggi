@@ -244,6 +244,12 @@ body.locked #loginView{display:flex;}
 body.locked #mainApp{display:none;}
 body.unlocked #loginView{display:none;}
 body.unlocked #mainApp{display:block;}
+
+/* LOGIN GATE STRONG */
+body.locked header, body.locked .header, body.locked .topbar, body.locked .actions, body.locked #mainApp { display:none !important; }
+body.locked #loginView { display:flex !important; }
+body.unlocked #loginView { display:none !important; }
+body.unlocked #mainApp { display:block !important; }
 </style>
 
 
@@ -251,11 +257,29 @@ body.unlocked #mainApp{display:block;}
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+
+<!-- LOGIN BOOTSTRAP -->
+<script>
+(function(){
+  function lock(){
+    document.body.classList.add('locked');
+    document.body.classList.remove('unlocked');
+    var lv=document.getElementById('loginView');
+    if(lv) lv.style.display='flex';
+  }
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', lock);
+  } else {
+    lock();
+  }
+})();
+</script>
+
 </head>
 
 <body>
 
-  <div id="loginView" style="position:fixed; inset:0; z-index:100000; align-items:center; justify-content:center; padding:18px; background:linear-gradient(120deg, rgba(10,14,20,.98), rgba(6,12,20,.98));">
+  <div id="loginView" style="position:fixed; inset:0; z-index:100000; display:flex; align-items:center; justify-content:center; padding:18px; background:linear-gradient(120deg, rgba(10,14,20,.98), rgba(6,12,20,.98));">
     <div style="width:min(520px,100%); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); border-radius:22px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.45);">
       <div style="font-weight:900; font-size:22px; color:#fff; margin-bottom:6px;">Inventario Imballaggi</div>
       <div style="color:rgba(255,255,255,.75); margin-bottom:14px; font-size:14px;">
