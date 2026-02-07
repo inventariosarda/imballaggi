@@ -244,12 +244,6 @@ body.locked #loginView{display:flex;}
 body.locked #mainApp{display:none;}
 body.unlocked #loginView{display:none;}
 body.unlocked #mainApp{display:block;}
-
-/* LOGIN GATE STRONG */
-body.locked header, body.locked .header, body.locked .topbar, body.locked .actions, body.locked #mainApp { display:none !important; }
-body.locked #loginView { display:flex !important; }
-body.unlocked #loginView { display:none !important; }
-body.unlocked #mainApp { display:block !important; }
 </style>
 
 
@@ -257,29 +251,11 @@ body.unlocked #mainApp { display:block !important; }
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
-
-<!-- LOGIN BOOTSTRAP -->
-<script>
-(function(){
-  function lock(){
-    document.body.classList.add('locked');
-    document.body.classList.remove('unlocked');
-    var lv=document.getElementById('loginView');
-    if(lv) lv.style.display='flex';
-  }
-  if(document.readyState==='loading'){
-    document.addEventListener('DOMContentLoaded', lock);
-  } else {
-    lock();
-  }
-})();
-</script>
-
 </head>
 
 <body>
 
-  <div id="loginView" style="position:fixed; inset:0; z-index:100000; display:flex; align-items:center; justify-content:center; padding:18px; background:linear-gradient(120deg, rgba(10,14,20,.98), rgba(6,12,20,.98));">
+  <div id="loginView" style="position:fixed; inset:0; z-index:100000; align-items:center; justify-content:center; padding:18px; background:linear-gradient(120deg, rgba(10,14,20,.98), rgba(6,12,20,.98));">
     <div style="width:min(520px,100%); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); border-radius:22px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.45);">
       <div style="font-weight:900; font-size:22px; color:#fff; margin-bottom:6px;">Inventario Imballaggi</div>
       <div style="color:rgba(255,255,255,.75); margin-bottom:14px; font-size:14px;">
@@ -1316,20 +1292,9 @@ body.unlocked #mainApp { display:block !important; }
     Home.open();
   }
 
-/* ===== CLOUD ONLY (Firebase) - v42 ===== */
+/* ===== CLOUD ONLY (Firebase) - v48 (fix login) ===== */
 (function(){
   const firebaseConfig = {
-
-  // Ensure a valid in-memory state to avoid 'undefined' UI
-  function ensureState(){
-    if(!window.Data) return;
-    if(!Data.state || typeof Data.state !== 'object') Data.state = {};
-    Data.state.categories = Array.isArray(Data.state.categories) ? Data.state.categories : [];
-    Data.state.inventories = Array.isArray(Data.state.inventories) ? Data.state.inventories : [];
-    Data.state.last = (Data.state.last && typeof Data.state.last==='object') ? Data.state.last : { screen: "home" };
-    if(typeof Data.state.last.screen !== 'string') Data.state.last.screen = "home";
-  }
-
     apiKey: "AIzaSyDOQTxHXbeGMhimYyBer3lADFqj_5N8Qwo",
     authDomain: "inventario-imballaggi.firebaseapp.com",
     databaseURL: "https://inventario-imballaggi-default-rtdb.europe-west1.firebasedatabase.app",
@@ -1339,130 +1304,125 @@ body.unlocked #mainApp { display:block !important; }
     appId: "1:369436001397:web:c50120ad1bd97e1a56243c"
   };
 
-  function defaultState(){
-    return {categories:[], inventories:[], last:{screen:"home"}};
+  function ensureState(){
+    if(!window.Data) return;
+    if(!Data.state || typeof Data.state !== "object") Data.state = {};
+    if(!Array.isArray(Data.state.categories)) Data.state.categories = [];
+    if(!Array.isArray(Data.state.inventories)) Data.state.inventories = [];
+    if(!Data.state.last || typeof Data.state.last !== "object") Data.state.last = { screen:"home" };
+    if(typeof Data.state.last.screen !== "string") Data.state.last.screen = "home";
   }
 
-  // Route exactly like the original "Boot" section (so nothing shows 'undefined')
-  function routeFromState(){
-    const s = Data.state || defaultState();
-    s.categories ??= [];
-    s.inventories ??= [];
-    s.last ??= {screen:"home"};
-    Data.state = s;
-
-    const last = s.last || {screen:"home"};
-    try{
-      if(last.screen==="inventoryCat" && last.invId && last.catId){
-        Inventory.openCategory(last.invId,last.catId);
-      }else if(last.screen==="inventory" && last.invId){
-        Inventory.open(last.invId);
-      }else if(last.screen==="viewInventories"){
-        ViewInventories.open();
-      }else if(last.screen==="setupCat" && last.catId){
-        Setup.openCategory(last.catId);
-      }else if(last.screen==="setup"){
-        Setup.open();
-      }else{
-        Home.open();
-      }
-    }catch(e){
-      console.error(e);
-      try{ Home.open(); }catch(_) {}
-    }
+  function lockUI(){
+    document.body.classList.add("locked");
+    document.body.classList.remove("unlocked");
+    const lv = document.getElementById("loginView");
+    if(lv) lv.style.display = "flex";
+  }
+  function unlockUI(){
+    document.body.classList.remove("locked");
+    document.body.classList.add("unlocked");
+    const lv = document.getElementById("loginView");
+    if(lv) lv.style.display = "none";
   }
 
-  // HARD disable localStorage persistence (cloud-only)
+  // Disable local persistence (cloud-only)
+  try{ Data.load = function(){}; }catch(e){}
   try{
-    localStorage.setItem = function(){};
-    localStorage.getItem = function(){ return null; };
-    localStorage.removeItem = function(){};
+    const origSave = Data.save && Data.save.bind(Data);
+    Data.save = function(){
+      try{ origSave && origSave(); }catch(e){}
+      try{ Cloud.schedulePush(); }catch(e){}
+    };
   }catch(e){}
 
   window.Cloud = {
     inited:false, db:null, ref:null, applying:false, t:null,
     init(){
       if(this.inited) return;
+      // Start locked until auth resolves
+      lockUI();
+      ensureState();
       try{
         if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
         this.db = firebase.database();
         this.inited = true;
 
         firebase.auth().onAuthStateChanged((u)=>{
-          const locked = !u;
-          document.body.classList.toggle('locked', locked);
-          document.body.classList.toggle('unlocked', !locked);
-
-          const lv=document.getElementById('loginView');
-          if(lv) lv.style.display = locked ? 'flex' : 'none';
-
-          if(u) this.startRealtime();
-          else this.stopRealtime();
-
-          this.setStatus('');
+          if(u){
+            unlockUI();
+            this.startRealtime();
+          }else{
+            this.stopRealtime();
+            lockUI();
+          }
+          this.setStatus("");
         });
       }catch(e){
         console.error(e);
-        this.setStatus('Errore Firebase: ' + (e.message||e));
-        alert('Errore Firebase: ' + (e.message||e));
+        this.setStatus("Errore Firebase: " + (e.message||e));
+        alert("Errore Firebase: " + (e.message||e));
       }
     },
     setStatus(msg){
-      const el=document.getElementById('loginStatus');
-      if(!el) return;
-      el.textContent = msg || '';
+      const el = document.getElementById("loginStatus");
+      if(el) el.textContent = msg || "";
     },
     path(){ return "/shared/state"; },
     startRealtime(){
       this.stopRealtime();
-      this.ref = this.db.ref(this.path());
+      const p = this.path();
+      this.ref = this.db.ref(p);
 
-      this.ref.on('value', (snap)=>{
-        const v=snap.val();
-
-        // If remote empty -> push default state once and route
-        if(!v || !v.state){
-          if(!Data.state) Data.state = defaultState();
-          try{ this.push(); }catch(e){}
-          routeFromState();
-          return;
+      // First ensure remote exists
+      this.ref.get().then(s=>{
+        if(!s.exists()){
+          ensureState();
+          return this.push(); // create
         }
+      }).catch(()=>{});
+
+      this.ref.on("value", (snap)=>{
+        const v = snap.val();
+        if(!v || !v.state) return;
+
+        // keep current screen LOCAL (no bounce)
+        const localScreen =
+          (Data && Data.state && Data.state.last && typeof Data.state.last.screen==="string")
+            ? Data.state.last.screen
+            : "home";
 
         this.applying = true;
         try{
-          Data.state = v.state || defaultState();
-          Data.state.categories ??= [];
-          Data.state.inventories ??= [];
-          Data.state.last ??= {screen:"home"};
-          routeFromState();
-        }catch(e){ console.error(e); }
-        finally{ this.applying = false; }
+          Data.state = v.state;
+          ensureState();
+          Data.state.last.screen = localScreen;
+          UI.render();
+        }catch(e){
+          console.error(e);
+        }finally{
+          this.applying = false;
+        }
       });
-
-      // create if missing
-      this.ref.get().then(s=>{ if(!s.exists()){ if(!Data.state) Data.state=defaultState(); this.push(); } }).catch(()=>{});
     },
     stopRealtime(){
       try{ if(this.ref) this.ref.off(); }catch(e){}
-      this.ref=null;
+      this.ref = null;
     },
     schedulePush(){
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
       clearTimeout(this.t);
-      this.t=setTimeout(()=>this.push(), 120);
+      this.t = setTimeout(()=>this.push(), 150);
     },
     push(){
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
-      if(!Data.state) Data.state = defaultState();
-      Data.state.categories ??= [];
-      Data.state.inventories ??= [];
-      Data.state.last ??= {screen:"home"};
+      ensureState();
       return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
     },
     async login(email, pass){
-      this.setStatus('Accesso...');
+      this.setStatus("Accesso...");
       try{
         await firebase.auth().signInWithEmailAndPassword(email, pass);
       }catch(err){
@@ -1473,52 +1433,47 @@ body.unlocked #mainApp { display:block !important; }
         }
       }
     },
-    async logout(){ try{ await firebase.auth().signOut(); }catch(e){} }
+    async logout(){
+      try{ await firebase.auth().signOut(); }catch(e){}
+    }
   };
 
-  // Cloud-only persistence hooks: Data.save triggers cloud push; Data.load becomes in-memory default
-  try{
-    Data.load = function(){ Data.state = defaultState(); };
-  }catch(e){}
+  // Boot
+  document.addEventListener("DOMContentLoaded", ()=>{
+    // Wire buttons (always)
+    const btnL = document.getElementById("btnLogin");
+    const btnO = document.getElementById("btnLogout");
+    const passEl = document.getElementById("loginPass");
 
-  try{
-    const origSave = Data.save.bind(Data);
-    Data.save = function(){
-      try{ origSave(); }catch(e){}
-      try{ Cloud.schedulePush(); }catch(e){}
-    };
-  }catch(e){}
+    if(btnL){
+      btnL.addEventListener("click", async ()=>{
+        const email = (document.getElementById("loginEmail").value||"").trim();
+        const pass  = (document.getElementById("loginPass").value||"").trim();
+        if(!email || !pass){ Cloud.setStatus("Inserisci email e password"); return; }
+        try{
+          await Cloud.login(email, pass);
+          Cloud.setStatus("");
+        }catch(e){
+          console.error(e);
+          Cloud.setStatus("Errore: " + (e.message||e.code||e));
+          alert("Errore login: " + (e.message||e.code||e));
+        }
+      });
+    }
+    if(btnO) btnO.addEventListener("click", ()=>Cloud.logout());
+    if(passEl){
+      passEl.addEventListener("keydown", (ev)=>{
+        if(ev.key==="Enter" && btnL) btnL.click();
+      });
+    }
 
-  // Boot safety: ensure state exists so old boot code doesn't render "undefined" inside #mainApp
-  try{ if(!Data.state) Data.state = defaultState(); }catch(e){}
-  document.body.classList.add('locked');
-  document.body.classList.remove('unlocked');
+    // Ensure login view exists (if missing, alert)
+    if(!document.getElementById("loginView")){
+      alert("ERRORE: loginView mancante nel file HTML.");
+      return;
+    }
 
-  document.addEventListener('DOMContentLoaded', ()=>{
-    try{ if(!Data.state) Data.state = defaultState(); }catch(e){}
     Cloud.init();
-    try{ ensureState(); }catch(e){}
-
-    const btnL=document.getElementById('btnLogin');
-    const btnO=document.getElementById('btnLogout');
-
-    btnL && btnL.addEventListener('click', async ()=>{
-      const email=(document.getElementById('loginEmail').value||'').trim();
-      const pass=(document.getElementById('loginPass').value||'').trim();
-      if(!email || !pass){ Cloud.setStatus('Inserisci email e password'); return; }
-      try{
-        await Cloud.login(email, pass);
-        Cloud.setStatus('');
-      }catch(e){
-        console.error(e);
-        Cloud.setStatus('Errore: ' + (e.message||e.code||e));
-        alert('Errore login: ' + (e.message||e.code||e));
-      }
-    });
-    btnO && btnO.addEventListener('click', ()=>Cloud.logout());
-
-    const passEl=document.getElementById('loginPass');
-    passEl && passEl.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ btnL && btnL.click(); }});
   });
 })();</script>
 
