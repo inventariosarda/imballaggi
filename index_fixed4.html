@@ -284,12 +284,12 @@ body.unlocked #mainApp{display:block;}
     <div style="width:min(520px,100%); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); border-radius:22px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.45);">
       <div style="font-weight:900; font-size:22px; color:#fff; margin-bottom:6px;">Inventario Imballaggi</div>
       <div style="color:rgba(255,255,255,.75); margin-bottom:14px; font-size:14px;">
-        Accedi per usare la webapp. Tutto viene salvato online (niente salvataggi locali).
+        Accedi per sincronizzare i dati tra dispositivi. Se sei offline, i dati restano salvati sul dispositivo e verranno sincronizzati al prossimo accesso.
       </div>
       <div class="label">Email</div>
-      <input id="loginEmail" type="email" inputmode="email" autocomplete="username" value="inventario@sardaformaggi.local" />
+      <input id="loginEmail" type="email" inputmode="email" autocomplete="username" value="" />
       <div class="label" style="margin-top:10px;">Password</div>
-      <input id="loginPass" type="password" autocomplete="current-password" value="Imperatore26!" />
+      <input id="loginPass" type="password" autocomplete="current-password" value="" />
       <div class="row" style="margin-top:14px; gap:10px;">
         <button class="btn big" id="btnLogin">Accedi</button>
         <button class="btn big alt" id="btnLogout">Esci</button>
@@ -1680,8 +1680,6 @@ async login(email, pass){
       try{ await firebase.auth().signOut(); }catch(e){}
     }
   };
-    };
-  }catch(e){}
 
   // Wire login buttons + boot
   document.addEventListener("DOMContentLoaded", ()=>{
