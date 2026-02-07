@@ -244,28 +244,7 @@ body.locked #loginView{display:flex;}
 body.locked #mainApp{display:none;}
 body.unlocked #loginView{display:none;}
 body.unlocked #mainApp{display:block;}
-
-    .syncBadge{
-      display:inline-flex; align-items:center; gap:8px;
-      padding:10px 14px; border-radius:999px;
-      border:1px solid var(--border);
-      font-weight:800; letter-spacing:.2px;
-      box-shadow: 0 6px 16px rgba(0,0,0,.18);
-      user-select:none;
-    }
-    .syncBadge .dot{
-      width:10px; height:10px; border-radius:99px;
-      background: rgba(255,255,255,.55);
-      box-shadow: inset 0 0 0 2px rgba(0,0,0,.25);
-    }
-    .syncBadge.ok{ background: rgba(46, 204, 113, .18); }
-    .syncBadge.ok .dot{ background: rgba(46, 204, 113, .95); }
-    .syncBadge.offline{ background: rgba(231, 76, 60, .18); }
-    .syncBadge.offline .dot{ background: rgba(231, 76, 60, .95); }
-    .syncBadge.syncing{ background: rgba(241, 196, 15, .18); }
-    .syncBadge.syncing .dot{ background: rgba(241, 196, 15, .95); }
-
-  </style>
+</style>
 
 
 <!-- Firebase (cloud) -->
@@ -284,12 +263,12 @@ body.unlocked #mainApp{display:block;}
     <div style="width:min(520px,100%); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); border-radius:22px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.45);">
       <div style="font-weight:900; font-size:22px; color:#fff; margin-bottom:6px;">Inventario Imballaggi</div>
       <div style="color:rgba(255,255,255,.75); margin-bottom:14px; font-size:14px;">
-        Accedi per sincronizzare i dati tra dispositivi. Se sei offline, i dati restano salvati sul dispositivo e verranno sincronizzati al prossimo accesso.
+        Accedi per usare la webapp. Tutto viene salvato online (niente salvataggi locali).
       </div>
       <div class="label">Email</div>
-      <input id="loginEmail" type="email" inputmode="email" autocomplete="username" value="" />
+      <input id="loginEmail" type="email" inputmode="email" autocomplete="username" value="inventario@sardaformaggi.local" />
       <div class="label" style="margin-top:10px;">Password</div>
-      <input id="loginPass" type="password" autocomplete="current-password" value="" />
+      <input id="loginPass" type="password" autocomplete="current-password" value="Imperatore26!" />
       <div class="row" style="margin-top:14px; gap:10px;">
         <button class="btn big" id="btnLogin">Accedi</button>
         <button class="btn big alt" id="btnLogout">Esci</button>
@@ -307,8 +286,6 @@ body.unlocked #mainApp{display:block;}
     </div>
     <div class="actions">
         <button class="chip" onclick="Cloud.logout()">Esci</button>
-      <span id="syncBadge" class="syncBadge offline" title="Stato sincronizzazione"><span class="dot"></span><span class="txt">Offline</span></span>
-
       <button class="chip" id="btnHome">🏠 Home</button>
       <button class="chip" id="btnBackup">💾 Backup</button>
       <button class="chip danger" id="btnReset">🧨 Reset</button>
@@ -409,49 +386,7 @@ body.unlocked #mainApp{display:block;}
     return head + "\n" + body;
   };
 
-  
-  // ===== Sync badge (Sync OK / Offline)
-  const SyncBadge = {
-    el:null, dot:null, txt:null,
-    state:"offline", // offline|ok|syncing
-    init(){
-      this.el = document.getElementById("syncBadge");
-      if(!this.el) return;
-      this.dot = this.el.querySelector(".dot");
-      this.txt = this.el.querySelector(".txt");
-      window.addEventListener("online", ()=>this.refresh());
-      window.addEventListener("offline", ()=>this.refresh());
-      this.refresh();
-    },
-    set(state, label){
-      if(!this.el) return;
-      this.el.classList.remove("offline","ok","syncing");
-      this.el.classList.add(state);
-      this.state = state;
-      if(this.txt) this.txt.textContent = label;
-    },
-    refresh(){
-      const online = navigator.onLine !== false;
-      if(!online){ this.set("offline","Offline"); return; }
-      // If Cloud exists and user is authenticated, show OK/syncing; otherwise "OK" means local only.
-      try{
-        const authed = window.firebase && firebase.auth && firebase.auth().currentUser;
-        if(!authed){
-          this.set("ok","Sync OK"); // local-only, but online
-          return;
-        }
-        // authed: if there are pending pushes or applying snapshot -> syncing
-        if(window.Cloud && (Cloud._syncing === true || Cloud.applying === true)){
-          this.set("syncing","Sync...");
-          return;
-        }
-        this.set("ok","Sync OK");
-      }catch(e){
-        this.set("ok","Sync OK");
-      }
-    }
-  };
-const loadXLSX = (() => {
+  const loadXLSX = (() => {
     let p = null;
     const urls = [
       "https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js",
@@ -1319,86 +1254,28 @@ const UI = {
       const inv=Data.state.inventories.find(i=>i.id===invId);
       if(!inv) throw new Error("Inventario non trovato.");
       const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
+      const rows=[];
+      rows.push({Categoria:"", Articolo:"", Descrizione:`Inventario: ${inv.name}`, Totale:"", Note:(inv.notes||""), Dettaglio:""});
+      rows.push({Categoria:"", Articolo:"", Descrizione:`Creato: ${fmtDate(inv.createdAt)} - Aggiornato: ${fmtDate(inv.updatedAt)}`, Totale:"", Note:"", Dettaglio:""});
+      rows.push({Categoria:"", Articolo:"", Descrizione:"", Totale:"", Note:"", Dettaglio:""});
 
-      // --- Sheet 1: Riepilogo (bella figura)
-      const summaryRows=[];
-      let grand=0;
-      cats.forEach(cat=>{
-        let catTotal=0;
-        let catItems=0;
-        (cat.items||[]).forEach(item=>{
-          const entries=inv.counts?.[item.id]||[];
-          const total=sumEntries(entries);
-          if(total!==0){ catItems++; }
-          catTotal += total;
-        });
-        grand += catTotal;
-        summaryRows.push({
-          "Categoria": cat.name,
-          "Articoli con quantità": catItems,
-          "Totale categoria": catTotal
-        });
-      });
-      summaryRows.push({"Categoria":"", "Articoli con quantità":"", "Totale categoria":""});
-      summaryRows.push({"Categoria":"TOTALE GENERALE", "Articoli con quantità":"", "Totale categoria": grand});
-
-      // --- Sheet 2: Dettaglio (tabella pulita, filtro)
-      const detailRows=[];
       cats.forEach(cat=>{
         (cat.items||[]).slice().sort((a,b)=>NAT.compare(a.code, b.code)).forEach(item=>{
           const entries=inv.counts?.[item.id]||[];
           const total=sumEntries(entries);
-          if(total===0) return; // non esportare righe vuote (più pulito)
-          const lastAt = entries.length ? entries.map(e=>new Date(e.at)).sort((a,b)=>b-a)[0] : null;
-          detailRows.push({
-            "Categoria": cat.name,
-            "Codice": item.code,
-            "Descrizione": item.desc||"",
-            "Totale": total,
-            "Ultimo aggiornamento": lastAt ? fmtDate(lastAt) : ""
-          });
-        });
-      });
-
-      // --- Sheet 3: Movimenti (facoltativo ma professionale)
-      const moveRows=[];
-      cats.forEach(cat=>{
-        (cat.items||[]).slice().sort((a,b)=>NAT.compare(a.code, b.code)).forEach(item=>{
-          const entries=(inv.counts?.[item.id]||[]).slice().sort((a,b)=>new Date(a.at)-new Date(b.at));
-          entries.forEach(e=>{
-            moveRows.push({
-              "Data/Ora": fmtDate(e.at),
-              "Categoria": cat.name,
-              "Codice": item.code,
-              "Descrizione": item.desc||"",
-              "Q.tà": Number(e.qty)||0,
-              "Nota": (e.note||"").trim()
-            });
-          });
+          const details=entries.map(e=>{
+            const n=(e.note||"").trim();
+            return `${fmtQty(e.qty)}${n ? " ("+n+")" : ""} @ ${fmtDate(e.at)}`;
+          }).join(" | ");
+          rows.push({Categoria:cat.name, Articolo:item.code, Descrizione:item.desc||"", Totale:total, Note:"", Dettaglio:details});
         });
       });
 
       const wb=XLSX.utils.book_new();
+      const ws=XLSX.utils.json_to_sheet(rows,{skipHeader:false});
+      ws["!cols"]=[{wch:18},{wch:12},{wch:40},{wch:10},{wch:34},{wch:90}];
+      XLSX.utils.book_append_sheet(wb,ws,"Inventario");
 
-      // Summary
-      const ws1=XLSX.utils.json_to_sheet(summaryRows,{skipHeader:false});
-      ws1["!cols"]=[{wch:26},{wch:18},{wch:16}];
-      XLSX.utils.book_append_sheet(wb,ws1,"Riepilogo");
-
-      // Detail
-      const ws2=XLSX.utils.json_to_sheet(detailRows,{skipHeader:false});
-      ws2["!cols"]=[{wch:22},{wch:12},{wch:44},{wch:10},{wch:22}];
-      // Auto-filter (A1:E1)
-      try{ ws2["!autofilter"] = { ref: "A1:E1" }; }catch(e){}
-      XLSX.utils.book_append_sheet(wb,ws2,"Dettaglio");
-
-      // Movimenti
-      const ws3=XLSX.utils.json_to_sheet(moveRows,{skipHeader:false});
-      ws3["!cols"]=[{wch:20},{wch:22},{wch:12},{wch:40},{wch:10},{wch:34}];
-      try{ ws3["!autofilter"] = { ref: "A1:F1" }; }catch(e){}
-      XLSX.utils.book_append_sheet(wb,ws3,"Movimenti");
-
-      // File name: inventario + data
       const filename=`${safeFile(inv.name)}.xlsx`;
       const out=XLSX.write(wb,{bookType:"xlsx", type:"array"});
       const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -1550,7 +1427,6 @@ const UI = {
             lockUI();
           }
           this.setStatus("");
-          try{ SyncBadge.refresh(); }catch(e){}
         });
       }catch(e){
         console.error(e);
@@ -1618,7 +1494,6 @@ const UI = {
             console.error(e);
           }finally{
             this.applying = false;
-            try{ SyncBadge.refresh(); }catch(e){}
           }
         }else{
           // Local is newer: push it up (debounced)
@@ -1631,7 +1506,6 @@ const UI = {
       this.ref = null;
     },
     schedulePush(){
-      try{ this._syncing = true; SyncBadge.refresh && SyncBadge.refresh(); }catch(e){}
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
       clearTimeout(this.t);
@@ -1641,9 +1515,7 @@ const UI = {
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
       ensureStateCloud();
-      return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state })
-        .then(()=>{ try{ this._syncing=false; SyncBadge.refresh(); }catch(e){} })
-        .catch((err)=>{ try{ this._syncing=false; SyncBadge.refresh(); }catch(e){} throw err; });
+      return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
     },
     
     async resetCloud(){
@@ -1681,9 +1553,15 @@ async login(email, pass){
     }
   };
 
+  // Hook Data.save to cloud push
+  try{
+    Data.save = function(){
+      try{ Cloud.schedulePush(); }catch(e){}
+    };
+  }catch(e){}
+
   // Wire login buttons + boot
   document.addEventListener("DOMContentLoaded", ()=>{
-    try{ SyncBadge.init(); }catch(e){}
     // always start locked
     lockUI();
     try{
