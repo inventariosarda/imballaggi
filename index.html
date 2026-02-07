@@ -525,7 +525,7 @@ const UI = {
       if(!entries.length){
         list.innerHTML = `<div class="muted">Nessuna aggiunta.</div>`;
       }else{
-        list.innerHTML = entries.slice().reverse().map(en=>`
+        list.innerHTML = (Array.isArray(entries)?entries:[]).slice().reverse().map(en=>`
           <div class="entry">
             <div class="entryTop">
               <div class="when">${fmtDate(en.at)}</div>
@@ -617,7 +617,7 @@ const UI = {
   const Setup = {
     open(){
       UI.setSub("Setup");
-      const cats=Data.state.categories.slice().sort((a,b)=>NAT.compare(a.name, b.name));
+      const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
 
       UI.render(`
         <div class="card">
@@ -903,7 +903,7 @@ const UI = {
       const inv=Data.state.inventories.find(i=>i.id===invId);
       if(!inv){ alert("Inventario non trovato."); Home.open(); return; }
 
-      const cats=Data.state.categories.slice().sort((a,b)=>NAT.compare(a.name, b.name));
+      const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
       UI.setSub(inv.name);
 
       if(!cats.length || !itemsCount()){
@@ -1130,7 +1130,7 @@ const UI = {
   const ViewInventories = {
     open(){
       UI.setSub("Inventari salvati");
-      const invs=Data.state.inventories.slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
+      const invs=(Array.isArray(Data.state.inventories)?Data.state.inventories:[]).slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
 
       UI.render(`
         <div class="card">
@@ -1175,7 +1175,7 @@ const UI = {
     buildCSV(invId){
       const inv=Data.state.inventories.find(i=>i.id===invId);
       if(!inv) throw new Error("Inventario non trovato.");
-      const cats=Data.state.categories.slice().sort((a,b)=>NAT.compare(a.name, b.name));
+      const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
       const rows=[];
       cats.forEach(cat=>{
         (cat.items||[]).slice().sort((a,b)=>NAT.compare(a.code, b.code)).forEach(item=>{
@@ -1199,7 +1199,7 @@ const UI = {
       if(typeof XLSX === "undefined") throw new Error("__XLSX_NOT_READY__");
       const inv=Data.state.inventories.find(i=>i.id===invId);
       if(!inv) throw new Error("Inventario non trovato.");
-      const cats=Data.state.categories.slice().sort((a,b)=>NAT.compare(a.name, b.name));
+      const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
       const rows=[];
       rows.push({Categoria:"", Articolo:"", Descrizione:`Inventario: ${inv.name}`, Totale:"", Note:(inv.notes||""), Dettaglio:""});
       rows.push({Categoria:"", Articolo:"", Descrizione:`Creato: ${fmtDate(inv.createdAt)} - Aggiornato: ${fmtDate(inv.updatedAt)}`, Totale:"", Note:"", Dettaglio:""});
@@ -1438,7 +1438,26 @@ const UI = {
       ensureState();
       return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
     },
-    async login(email, pass){
+    
+    async resetCloud(){
+      try{
+        // Stop listening to avoid bounce while resetting
+        try{ this.stopRealtime && this.stopRealtime(); }catch(e){}
+        ensureState();
+        Data.state = { categories: [], inventories: [], last: { screen: "home" } };
+        ensureState();
+        await this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
+        // Re-open home
+        try{ UI.goHome(true); }catch(e){}
+        // Restart listener
+        try{ this.startRealtime && this.startRealtime(); }catch(e){}
+      }catch(e){
+        console.error(e);
+        alert("Errore reset cloud: " + (e.message||e));
+      }
+    },
+
+async login(email, pass){
       this.setStatus("Accesso...");
       try{
         await firebase.auth().signInWithEmailAndPassword(email, pass);
@@ -1459,21 +1478,6 @@ const UI = {
   try{
     Data.save = function(){
       try{ Cloud.schedulePush(); }catch(e){}
-    };
-  }catch(e){}
-
-
-  // Override Reset: clears CLOUD state (no local)
-  try{
-    Data.resetAll = function(){
-      if(!confirm("ATTENZIONE: cancello tutto (setup + inventari) ONLINE. Sicuro?")) return;
-      // prevent bounce while we overwrite
-      try{ Cloud.applying = true; }catch(e){}
-      Data.state = { categories: [], inventories: [], last: { screen: "home" } };
-      try{ UI.goHome(true); }catch(e){}
-      try{ UI.render(); }catch(e){}
-      try{ Cloud.applying = false; }catch(e){}
-      try{ Cloud.push(); }catch(e){}
     };
   }catch(e){}
 
