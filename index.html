@@ -4,8 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Inventario Imballaggi</title>
-  <meta name="theme-color" content="#0b1220" />
-  <link rel="manifest" href="manifest.json" />
   <style>
     :root{
       --bg:#0b1220;
@@ -253,16 +251,8 @@ body.unlocked #mainApp{display:block;}
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
-
-  <script>
-  // PWA (offline app shell)
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(()=>{});
-    });
-  }
-  </script>
-
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0b1220">
 </head>
 
 <body>
@@ -1349,8 +1339,7 @@ body.unlocked #mainApp{display:block;}
     Home.open();
   }
 
-
-/* ===== OFFLINE-FIRST + CLOUD SYNC (Firebase RTDB) - v44 ===== */
+/* ===== OFFLINE-FIRST + REALTIME (Firebase) - v45 ===== */
 (function(){
   const firebaseConfig = {
     apiKey: "AIzaSyDOQTxHXbeGMhimYyBer3lADFqj_5N8Qwo",
@@ -1362,173 +1351,89 @@ body.unlocked #mainApp{display:block;}
     appId: "1:369436001397:web:c50120ad1bd97e1a56243c"
   };
 
-  const LS_DRAFT = "inv_imballaggi_offline_draft_v1";
-  const LS_DIRTY = "inv_imballaggi_offline_dirty_v1";
-  const LS_AT    = "inv_imballaggi_offline_updatedAt_v1";
+  const LS_KEY = "imballaggi_offline_state_v1"; // latest state snapshot (cloud-safe)
+  const LS_DIRTY = "imballaggi_offline_dirty_v1"; // "1" if needs push
 
-  function now(){ return Date.now(); }
-
-  function defaultState(){
-    return { categories: [], inventories: [], last: { screen: "home" } };
+  function cloudSafeState(state){
+    // Clone + remove UI-only navigation so it doesn't bounce back to home
+    const s = JSON.parse(JSON.stringify(state || {}));
+    delete s.last;
+    return s;
   }
 
-  function getDraft(){
-    try{
-      const raw = localStorage.getItem(LS_DRAFT);
-      if(!raw) return null;
-      const s = JSON.parse(raw);
-      if(!s || typeof s !== "object") return null;
-      s.categories ??= [];
-      s.inventories ??= [];
-      s.last ??= { screen: "home" };
-      return s;
-    }catch(e){ return null; }
-  }
-
-  function setDraft(state, markDirty){
-    try{
-      localStorage.setItem(LS_DRAFT, JSON.stringify(state));
-      localStorage.setItem(LS_AT, String(now()));
-      if(markDirty) localStorage.setItem(LS_DIRTY, "1");
-    }catch(e){}
-  }
-
-  function clearDirty(){
-    try{ localStorage.removeItem(LS_DIRTY); }catch(e){}
-  }
-
-  function isDirty(){
-    try{ return localStorage.getItem(LS_DIRTY) === "1"; }catch(e){ return false; }
-  }
-
-  function draftAt(){
-    try{ return Number(localStorage.getItem(LS_AT)||0); }catch(e){ return 0; }
-  }
-
-  // Route exactly like the original app expects (avoid "undefined")
-  function routeFromState(){
-    const s = Data.state || defaultState();
+  function ensureArrays(s){
     s.categories ??= [];
     s.inventories ??= [];
-    s.last ??= { screen: "home" };
-
-    // Most stable fallback: render home
-    try{
-      if(typeof UI.goHome === "function") UI.goHome(true);
-      else UI.render();
-    }catch(e){
-      try{ UI.render(); }catch(e2){}
-    }
+    return s;
   }
 
-  // Status chip
-  function setTopSub(txt){
-    try{
-      const el = document.querySelector(".title .sub");
-      if(el) el.textContent = txt;
-    }catch(e){}
-  }
-
-  function netTxt(){
-    const on = navigator.onLine;
-    if(!on) return "OFFLINE";
-    const u = (window.firebase && firebase.auth && firebase.auth().currentUser) ? firebase.auth().currentUser : null;
-    if(!u) return "ONLINE (non loggato)";
-    return Cloud.syncing ? "SYNC..." : "ONLINE";
-  }
-
-  window.addEventListener("online", ()=>setTopSub(netTxt()));
-  window.addEventListener("offline", ()=>setTopSub(netTxt()));
-
+  // Expose Cloud for header "Esci"
   window.Cloud = {
-    inited:false, db:null, ref:null, syncing:false, t:null, applying:false, _firstSyncDone:false,
-    path(){ return "/shared/state"; },
+    inited:false,
+    db:null,
+    ref:null,
+    applying:false,
+    pushTimer:null,
+    online: navigator.onLine,
 
     init(){
       if(this.inited) return;
-      try{
-        if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
-        this.db = firebase.database();
-        this.inited = true;
+      if(!firebase.apps || !firebase.apps.length) firebase.initializeApp(firebaseConfig);
+      this.db = firebase.database();
+      this.inited = true;
 
-        firebase.auth().onAuthStateChanged((u)=>{
-          const locked = !u;
-          document.body.classList.toggle("locked", locked);
-          document.body.classList.toggle("unlocked", !locked);
+      window.addEventListener('online', ()=>{ this.online = true; this.flushIfNeeded(); });
+      window.addEventListener('offline', ()=>{ this.online = false; });
 
-          const lv=document.getElementById("loginView");
-          if(lv) lv.style.display = locked ? "flex" : "none";
+      firebase.auth().onAuthStateChanged((u)=>{
+        const locked = !u;
+        document.body.classList.toggle('locked', locked);
+        document.body.classList.toggle('unlocked', !locked);
 
-          if(u){
-            this.startRealtime();
-          }else{
-            this.stopRealtime();
-          }
-          setTopSub(netTxt());
-        });
+        const lv=document.getElementById('loginView');
+        if(lv) lv.style.display = locked ? 'flex' : 'none';
 
-        setTopSub(netTxt());
-      }catch(e){
-        console.error(e);
-        alert("Errore Firebase: " + (e.message||e));
-      }
+        if(u){
+          this.startRealtime();
+          // If we have offline changes, push them now
+          this.flushIfNeeded(true);
+        }else{
+          this.stopRealtime();
+        }
+        this.setStatus("");
+      });
     },
+
+    setStatus(msg){
+      const el=document.getElementById('loginStatus');
+      if(!el) return;
+      el.textContent = msg || "";
+    },
+
+    path(){ return "/shared/state"; },
 
     startRealtime(){
       this.stopRealtime();
       this.ref = this.db.ref(this.path());
-      this._firstSyncDone = false;
-
-      this.ref.on("value", (snap)=>{
+      this.ref.on('value', (snap)=>{
         const v = snap.val();
-
-        // If first sync and remote empty -> push local (or defaults)
         if(!v || !v.state){
-          if(!this._firstSyncDone){
-            this._firstSyncDone = true;
-            this.push(true);
-          }
+          // Initialize cloud if empty
+          this.pushNow();
           return;
         }
-
-        const remoteAt = Number(v.updatedAt||0);
-        const localAt  = draftAt();
-        const localDirty = isDirty();
-
-        // First sync resolution: if local dirty and newer -> push local; else accept remote
-        if(!this._firstSyncDone){
-          this._firstSyncDone = true;
-          if(localDirty && localAt > remoteAt){
-            // local wins
-            this.push(true);
-            return;
-          }
-        }
-
-        // Apply remote if we are not currently editing offline dirty newer
-        if(localDirty && localAt > remoteAt) return;
+        // Preserve current screen locally
+        const keepLast = (Data.state && Data.state.last) ? Data.state.last : undefined;
 
         this.applying = true;
         try{
-          Data.state = v.state || defaultState();
-          Data.state.categories ??= [];
-          Data.state.inventories ??= [];
-          Data.state.last ??= { screen: "home" };
-
-          // update offline draft to match remote
-          setDraft(Data.state, false);
-          clearDirty();
-
-          routeFromState();
-          setTopSub(netTxt());
+          Data.state = ensureArrays(v.state);
+          // restore local navigation (do NOT sync it)
+          if(keepLast) Data.state.last = keepLast;
+          UI.render();
         }catch(e){ console.error(e); }
         finally{ this.applying = false; }
       });
-
-      // Make sure remote exists
-      this.ref.get().then(s=>{
-        if(!s.exists()) this.push(true);
-      }).catch(()=>{});
     },
 
     stopRealtime(){
@@ -1536,42 +1441,58 @@ body.unlocked #mainApp{display:block;}
       this.ref=null;
     },
 
-    schedulePush(){
-      if(this.applying) return;
-      if(!navigator.onLine) return;
-      try{ if(!firebase.auth().currentUser) return; }catch(e){ return; }
-      clearTimeout(this.t);
-      this.t = setTimeout(()=>this.push(false), 200);
+    markDirty(){
+      try{
+        const safe = cloudSafeState(Data.state);
+        localStorage.setItem(LS_KEY, JSON.stringify(safe));
+        localStorage.setItem(LS_DIRTY, "1");
+      }catch(e){}
     },
 
-    push(immediate){
+    hasDirty(){
+      try{ return localStorage.getItem(LS_DIRTY) === "1"; }catch(e){ return false; }
+    },
+
+    flushIfNeeded(immediate=false){
+      if(!this.inited) return;
+      if(!this.online) return;
+      try{ if(!firebase.auth().currentUser) return; }catch(e){ return; }
+      if(!this.hasDirty()) return;
+      if(immediate) this.pushNow();
+      else this.schedulePush();
+    },
+
+    schedulePush(){
       if(this.applying) return;
-      if(!navigator.onLine) return;
+      if(!this.online) return;
+      try{ if(!firebase.auth().currentUser) return; }catch(e){ return; }
+      clearTimeout(this.pushTimer);
+      this.pushTimer = setTimeout(()=>this.pushNow(), 250);
+    },
+
+    pushNow(){
+      if(this.applying) return;
+      if(!this.online) return;
       try{ if(!firebase.auth().currentUser) return; }catch(e){ return; }
 
-      // Ensure valid state
-      if(!Data.state) Data.state = defaultState();
-      Data.state.categories ??= [];
-      Data.state.inventories ??= [];
-      Data.state.last ??= { screen: "home" };
+      let safe = null;
+      try{
+        safe = localStorage.getItem(LS_KEY);
+      }catch(e){}
+      let stateToSend = safe ? JSON.parse(safe) : cloudSafeState(Data.state);
 
-      this.syncing = true;
-      setTopSub(netTxt());
+      // Never send UI navigation
+      stateToSend = ensureArrays(stateToSend);
 
-      return this.db.ref(this.path()).set({ updatedAt: now(), state: Data.state })
+      return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: stateToSend })
         .then(()=>{
-          this.syncing = false;
-          clearDirty(); // now it is on cloud
-          setTopSub(netTxt());
+          try{ localStorage.setItem(LS_DIRTY, "0"); }catch(e){}
         })
-        .catch((e)=>{
-          console.error(e);
-          this.syncing = false;
-          setTopSub(netTxt());
-        });
+        .catch((e)=>{ console.error(e); });
     },
 
     async login(email, pass){
+      this.setStatus("Accesso...");
       try{
         await firebase.auth().signInWithEmailAndPassword(email, pass);
       }catch(err){
@@ -1588,97 +1509,71 @@ body.unlocked #mainApp{display:block;}
     }
   };
 
-  // ---- Offline-first persistence wiring ----
-  // 1) At boot, load from local draft (so you can work in a cell)
-  (function bootFromDraft(){
-    const d = getDraft();
-    if(d){
-      Data.state = d;
-    }else{
-      Data.state = defaultState();
-      setDraft(Data.state, false);
-    }
-    try{ routeFromState(); }catch(e){}
-  })();
-
-  // 2) Replace Data.save: always write draft; if online+logged -> cloud push
+  // Keep legacy behavior but intercept save:
+  // - allow UI navigation locally (Data.state.last)
+  // - queue cloud-safe snapshot locally
+  // - push when online/auth
   try{
     const origSave = Data.save.bind(Data);
     Data.save = function(){
-      // let original do in-memory stuff, but ignore its localStorage if any
+      // Let the app update its internal state first (including last.screen)
       try{ origSave(); }catch(e){}
-      // always store draft + mark dirty
-      try{
-        if(!Data.state) Data.state = defaultState();
-        setDraft(Data.state, true);
-      }catch(e){}
-      // if we can, push to cloud
-      try{ Cloud.schedulePush(); }catch(e){}
-      setTopSub(netTxt());
+      try{ Cloud.markDirty(); }catch(e){}
+      try{ Cloud.flushIfNeeded(false); }catch(e){}
     };
   }catch(e){}
 
-  // 3) Replace Data.load so legacy localStorage is not used
+  // On boot, if offline snapshot exists, preload it so you can work offline immediately.
   try{
-    Data.load = function(){ /* no-op: we already boot from draft */ };
+    const safe = localStorage.getItem(LS_KEY);
+    if(safe){
+      const keepLast = (Data.state && Data.state.last) ? Data.state.last : undefined;
+      Data.state = ensureArrays(JSON.parse(safe));
+      if(keepLast) Data.state.last = keepLast;
+    }
   }catch(e){}
 
-  // 4) Hard reset (also clears draft) - reuse existing UI reset if present
-  try{
-    const origReset = Data.resetAll ? Data.resetAll.bind(Data) : null;
-    Data.resetAll = function(){
-      if(!confirm("ATTENZIONE: cancello tutto (setup + inventari). Sicuro?")) return;
-      Data.state = defaultState();
-      try{ setDraft(Data.state, true); }catch(e){}
-      try{ Cloud.push(true); }catch(e){}
-      try{
-        if(typeof UI.goHome === "function") UI.goHome(true);
-        else UI.render();
-      }catch(e){}
-    };
-  }catch(e){}
-
-  // Login UI hooks (existing login screen)
-  document.addEventListener("DOMContentLoaded", ()=>{
+  // Login UI wiring
+  document.addEventListener('DOMContentLoaded', ()=>{
     Cloud.init();
+    const btnL=document.getElementById('btnLogin');
+    const btnO=document.getElementById('btnLogout');
 
-    const btnL = document.getElementById("btnLogin");
-    const btnO = document.getElementById("btnLogout");
+    btnL && btnL.addEventListener('click', async ()=>{
+      const email=(document.getElementById('loginEmail').value||'').trim();
+      const pass=(document.getElementById('loginPass').value||'').trim();
+      if(!email || !pass){ Cloud.setStatus('Inserisci email e password'); return; }
+      try{
+        await Cloud.login(email, pass);
+        Cloud.setStatus('');
+      }catch(e){
+        console.error(e);
+        Cloud.setStatus('Errore: ' + (e.message||e.code||e));
+        alert('Errore login: ' + (e.message||e.code||e));
+      }
+    });
 
-    if(btnL){
-      btnL.addEventListener("click", async ()=>{
-        const email = (document.getElementById("loginEmail").value||"").trim();
-        const pass  = (document.getElementById("loginPass").value||"").trim();
-        if(!email || !pass){ 
-          const el=document.getElementById("loginStatus"); if(el) el.textContent="Inserisci email e password";
-          return; 
-        }
-        const st=document.getElementById("loginStatus"); if(st) st.textContent="Accesso...";
-        try{
-          await Cloud.login(email, pass);
-          if(st) st.textContent="";
-          setTopSub(netTxt());
-        }catch(e){
-          console.error(e);
-          if(st) st.textContent = "Errore: " + (e.message||e.code||e);
-          alert("Errore login: " + (e.message||e.code||e));
-        }
-      });
-    }
+    btnO && btnO.addEventListener('click', ()=>Cloud.logout());
 
-    if(btnO){
-      btnO.addEventListener("click", ()=>Cloud.logout());
-    }
+    const passEl=document.getElementById('loginPass');
+    passEl && passEl.addEventListener('keydown', (ev)=>{ if(ev.key==='Enter'){ btnL && btnL.click(); }});
 
-    const passEl=document.getElementById("loginPass");
-    if(passEl && btnL){
-      passEl.addEventListener("keydown", (ev)=>{ if(ev.key==="Enter") btnL.click(); });
-    }
-
-    setTopSub(netTxt());
+    // Default: lock until auth state
+    document.body.classList.add('locked');
+    document.body.classList.remove('unlocked');
   });
-})();;</script>
+})();
+</script>
 
 </div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(console.error);
+  });
+}
+</script>
+
 </body>
 </html>
