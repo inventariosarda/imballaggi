@@ -463,6 +463,21 @@ body.unlocked #mainApp{display:block;}
       };
       r.readAsText(file,"utf-8");
     }
+    ,
+    resetAll(){
+      // Reset everything (cloud if available, otherwise local)
+      try{
+        if(window.Cloud && typeof Cloud.resetCloud === "function"){
+          Cloud.resetCloud();
+          return;
+        }
+      }catch(e){}
+      this.state = { categories: [], inventories: [], last: { screen: "home" } };
+      try{ window.ensureState && window.ensureState(); }catch(e){}
+      try{ UI && UI.goHome && UI.goHome(true); }catch(e){}
+      try{ this.save(); }catch(e){}
+    }
+
   };
 
   function getCategory(catId){ return Data.state.categories.find(c=>c.id===catId); }
@@ -487,6 +502,7 @@ function ensureState(){
   if(!Data.state.last || typeof Data.state.last!=='object') Data.state.last = { screen: 'home' };
   if(typeof Data.state.last.screen !== 'string') Data.state.last.screen = 'home';
 }
+window.ensureState = ensureState;
 /* ------------------------- */
 const UI = {
     setSub(t){ document.getElementById("subTitle").textContent = t; },
@@ -563,6 +579,7 @@ const UI = {
   // ===== Screens
   const Home = {
     open(){
+      ensureState();
       UI.setSub("Menu principale");
       const cats=Data.state.categories.length;
       const items=itemsCount();
@@ -618,6 +635,7 @@ const UI = {
 
   const Setup = {
     open(){
+      ensureState();
       UI.setSub("Setup");
       const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
 
@@ -686,6 +704,7 @@ const UI = {
       const inp=document.getElementById("catName");
       const name=(inp.value||"").trim();
       if(!name) return;
+      Data.state.categories ??= [];
       const dup=Data.state.categories.find(c=>c.name.toLowerCase()===name.toLowerCase());
       if(dup){ this.openCategory(dup.id); return; }
       const id=uid();
@@ -898,12 +917,14 @@ const UI = {
       const name=`INVENTARIO IMBALLAGGI ${todayLabel()}`;
       const invId=uid();
       const inv={id:invId, name, createdAt:nowISO(), updatedAt:nowISO(), notes:"", counts:{}};
+      Data.state.inventories ??= [];
       Data.state.inventories.unshift(inv);
       Data.save();
       this.open(invId);
     },
 
     open(invId){
+      ensureState();
       const inv=Data.state.inventories.find(i=>i.id===invId);
       if(!inv){ alert("Inventario non trovato."); Home.open(); return; }
 
@@ -1133,6 +1154,7 @@ const UI = {
 
   const ViewInventories = {
     open(){
+      ensureState();
       UI.setSub("Inventari salvati");
       const invs=(Array.isArray(Data.state.inventories)?Data.state.inventories:[]).slice().sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt));
 
@@ -1284,22 +1306,30 @@ const UI = {
     }
   });
 
+  // ===== Navigation restore
+  function renderFromLast(){
+    try{ ensureState(); }catch(e){}
+    const last = (Data && Data.state && Data.state.last) ? Data.state.last : {screen:"home"};
+    if(last.screen==="inventoryCat" && last.invId && last.catId){
+      Inventory.openCategory(last.invId,last.catId);
+    }else if(last.screen==="inventory" && last.invId){
+      Inventory.open(last.invId);
+    }else if(last.screen==="viewInventories"){
+      ViewInventories.open();
+    }else if(last.screen==="setupCat" && last.catId){
+      Setup.openCategory(last.catId);
+    }else if(last.screen==="setup"){
+      Setup.open();
+    }else{
+      Home.open();
+    }
+  }
+  window.renderFromLast = renderFromLast;
+
   // ===== Boot
   Data.load();
-  const last=Data.state.last||{screen:"home"};
-  if(last.screen==="inventoryCat" && last.invId && last.catId){
-    Inventory.openCategory(last.invId,last.catId);
-  }else if(last.screen==="inventory" && last.invId){
-    Inventory.open(last.invId);
-  }else if(last.screen==="viewInventories"){
-    ViewInventories.open();
-  }else if(last.screen==="setupCat" && last.catId){
-    Setup.openCategory(last.catId);
-  }else if(last.screen==="setup"){
-    Setup.open();
-  }else{
-    Home.open();
-  }
+  renderFromLast();
+
 
 /* ===== CLOUD ONLY (Firebase) - v49 (stable UI) ===== */
 (function(){
@@ -1313,7 +1343,7 @@ const UI = {
     appId: "1:369436001397:web:c50120ad1bd97e1a56243c"
   };
 
-  function ensureState(){
+  function ensureStateCloud(){
     if(!window.Data) return;
     if(!Data.state || typeof Data.state !== "object") Data.state = {};
     if(!Array.isArray(Data.state.categories)) Data.state.categories = [];
@@ -1341,6 +1371,7 @@ const UI = {
     Data.load = function(){
       // DO NOT read localStorage
       Data.state = { categories: [], inventories: [], last: { screen: "home" } };
+      try{ window.ensureState && window.ensureState(); }catch(e){}
       return;
     };
   }catch(e){}
@@ -1356,7 +1387,7 @@ const UI = {
       try{
         if(window.Data){
           if(!Data.state) Data.state = { categories: [], inventories: [], last: { screen:"home" } };
-          ensureState();
+          ensureStateCloud();
         }
       }catch(e){}
 
@@ -1368,8 +1399,8 @@ const UI = {
         firebase.auth().onAuthStateChanged((u)=>{
           if(u){
             // render immediately (before first cloud snapshot) with defaults
-            ensureState();
-            try{ if(window.UI && UI.render) UI.render(); }catch(e){}
+            ensureStateCloud();
+            try{ if(window.renderFromLast) window.renderFromLast(); else { try{ Home.open(); }catch(e){} } }catch(e){}
             unlockUI();
             this.startRealtime();
           }else{
@@ -1397,7 +1428,7 @@ const UI = {
       // ensure remote exists
       this.ref.get().then(s=>{
         if(!s.exists()){
-          ensureState();
+          ensureStateCloud();
           return this.push();
         }
       }).catch(()=>{});
@@ -1415,10 +1446,10 @@ const UI = {
         this.applying = true;
         try{
           Data.state = v.state;
-          ensureState();
+          ensureStateCloud();
           Data.state.last.screen = localScreen;
           // render current view; don't sync screen across devices
-          if(window.UI && UI.render) UI.render();
+          if(window.renderFromLast) window.renderFromLast(); else { try{ Home.open(); }catch(e){} }
         }catch(e){
           console.error(e);
         }finally{
@@ -1439,7 +1470,7 @@ const UI = {
     push(){
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
-      ensureState();
+      ensureStateCloud();
       return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
     },
     
@@ -1447,9 +1478,9 @@ const UI = {
       try{
         // Stop listening to avoid bounce while resetting
         try{ this.stopRealtime && this.stopRealtime(); }catch(e){}
-        ensureState();
+        ensureStateCloud();
         Data.state = { categories: [], inventories: [], last: { screen: "home" } };
-        ensureState();
+        ensureStateCloud();
         await this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
         // Re-open home
         try{ UI.goHome(true); }catch(e){}
@@ -1493,7 +1524,7 @@ async login(email, pass){
       if(window.Data && !Data.state){
         Data.state = { categories: [], inventories: [], last: { screen:"home" } };
       }
-      ensureState();
+      ensureStateCloud();
     }catch(e){}
 
     const btnL = document.getElementById("btnLogin");
