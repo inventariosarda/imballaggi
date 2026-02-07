@@ -495,12 +495,16 @@ body.unlocked #mainApp{display:block;}
 
 /* --- STATE GUARD (v53) --- */
 function ensureState(){
-  if(!window.Data) return;
-  if(!Data.state || typeof Data.state!=='object') Data.state = {};
-  if(!Array.isArray(Data.state.categories)) Data.state.categories = [];
-  if(!Array.isArray(Data.state.inventories)) Data.state.inventories = [];
-  if(!Data.state.last || typeof Data.state.last!=='object') Data.state.last = { screen: 'home' };
-  if(typeof Data.state.last.screen !== 'string') Data.state.last.screen = 'home';
+  // Works whether Data is a global var or only attached to window
+  const D = (typeof Data!=='undefined' && Data) ? Data : window.Data;
+  if(!D) return;
+  if(!D.state || typeof D.state!=='object') D.state = {};
+  if(!Array.isArray(D.state.categories)) D.state.categories = [];
+  if(!Array.isArray(D.state.inventories)) D.state.inventories = [];
+  if(!D.state.last || typeof D.state.last!=='object') D.state.last = { screen: 'home' };
+  if(typeof D.state.last.screen !== 'string') D.state.last.screen = 'home';
+  // keep window.Data in sync
+  window.Data = D;
 }
 window.ensureState = ensureState;
 /* ------------------------- */
