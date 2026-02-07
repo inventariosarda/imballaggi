@@ -417,14 +417,38 @@ body.unlocked #mainApp{display:block;}
   // ===== Data
   const Data = {
     state:null,
+    // Local-first persistence (works offline). Cloud sync is optional when logged in.
+    STORAGE_KEY: "imballaggi_state_v1",
     load(){
-      // Cloud-first: do not read localStorage. Always init a valid in-memory state.
-      this.state = { categories: [], inventories: [], last: { screen: "home" } };
+      // 1) Load from localStorage if present
+      let st = null;
+      try{
+        const raw = localStorage.getItem(this.STORAGE_KEY);
+        if(raw) st = JSON.parse(raw);
+      }catch(e){ st = null; }
+
+      // 2) Fallback to empty state
+      if(!st || typeof st !== "object"){
+        st = { categories: [], inventories: [], last: { screen: "home" }, meta:{updatedAt:0} };
+      }
+
+      this.state = st;
       ensureState();
     },
     save(){
       ensureState();
-      // No local persistence. Push to Firebase (debounced) when logged in.
+      // Update meta timestamp
+      try{
+        if(!this.state.meta || typeof this.state.meta !== "object") this.state.meta = {};
+        this.state.meta.updatedAt = Date.now();
+      }catch(e){}
+
+      // Always persist locally
+      try{
+        localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
+      }catch(e){}
+
+      // Push to Firebase (debounced) when logged in
       if(window.Cloud && Cloud.schedulePush) Cloud.schedulePush();
     },
     download(filename, blob){
@@ -1354,6 +1378,8 @@ const UI = {
     if(!Array.isArray(Data.state.inventories)) Data.state.inventories = [];
     if(!Data.state.last || typeof Data.state.last !== "object") Data.state.last = { screen:"home" };
     if(typeof Data.state.last.screen !== "string") Data.state.last.screen = "home";
+    if(!Data.state.meta || typeof Data.state.meta !== "object") Data.state.meta = { updatedAt: 0 };
+    if(typeof Data.state.meta.updatedAt !== "number") Data.state.meta.updatedAt = 0;
   }
 
   function lockUI(){
@@ -1369,18 +1395,7 @@ const UI = {
     if(lv) lv.style.display = "none";
   }
 
-  // Cloud-only: disable localStorage read/write but keep default state initializer
-  try{
-    const origLoad = Data.load && Data.load.bind(Data);
-    Data.load = function(){
-      // DO NOT read localStorage
-      Data.state = { categories: [], inventories: [], last: { screen: "home" } };
-      try{ window.ensureState && window.ensureState(); }catch(e){}
-      return;
-    };
-  }catch(e){}
-
-  // Save -> push to cloud
+    // Save -> push to cloud
   window.Cloud = {
     inited:false, db:null, ref:null, applying:false, t:null,
     init(){
@@ -1447,17 +1462,42 @@ const UI = {
             ? Data.state.last.screen
             : "home";
 
-        this.applying = true;
-        try{
-          Data.state = v.state;
-          ensureStateCloud();
-          Data.state.last.screen = localScreen;
-          // render current view; don't sync screen across devices
-          if(window.renderFromLast) window.renderFromLast(); else { try{ Home.open(); }catch(e){} }
-        }catch(e){
-          console.error(e);
-        }finally{
-          this.applying = false;
+        const remoteUpdated =
+          (typeof v.updatedAt === "number" ? v.updatedAt :
+            (v.state && v.state.meta && typeof v.state.meta.updatedAt==="number" ? v.state.meta.updatedAt : 0));
+
+        const localUpdated =
+          (Data && Data.state && Data.state.meta && typeof Data.state.meta.updatedAt==="number")
+            ? Data.state.meta.updatedAt
+            : 0;
+
+        // If cloud is newer (or equal), apply cloud -> persist locally.
+        // If local is newer, keep local and push it to cloud.
+        if(remoteUpdated >= localUpdated){
+          this.applying = true;
+          try{
+            Data.state = v.state;
+            ensureStateCloud();
+            Data.state.last.screen = localScreen;
+            Data.state.meta.updatedAt = remoteUpdated;
+
+            // Persist locally without triggering another push
+            try{
+              if(Data && Data.STORAGE_KEY){
+                localStorage.setItem(Data.STORAGE_KEY, JSON.stringify(Data.state));
+              }
+            }catch(e){}
+
+            // render current view; don't sync screen across devices
+            if(window.renderFromLast) window.renderFromLast(); else { try{ Home.open(); }catch(e){} }
+          }catch(e){
+            console.error(e);
+          }finally{
+            this.applying = false;
+          }
+        }else{
+          // Local is newer: push it up (debounced)
+          this.schedulePush();
         }
       });
     },
