@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<title>Inventario Imballaggi</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+body{font-family:Arial;margin:0;background:#f5f5f5}
+header{background:#222;color:#fff;padding:10px;display:flex;justify-content:space-between;align-items:center}
+#syncBadge{padding:4px 10px;border-radius:12px;font-size:12px}
+.offline{background:#c0392b}
+.syncing{background:#f39c12}
+.ok{background:#27ae60}
+main{padding:15px}
+input,button{padding:8px;margin:5px 0;width:100%}
+</style>
+</head>
+
+<body>
+<header>
+  <div>📦 Inventario</div>
+  <div id="syncBadge" class="offline">OFFLINE</div>
+</header>
+
+<main>
+<h3>Setup categorie</h3>
+<input id="catInput" placeholder="Nuova categoria">
+<button onclick="addCategory()">Aggiungi categoria</button>
+<ul id="catList"></ul>
+</main>
+
+<script>
+const STORAGE_KEY="inventario_imballaggi_v1";
+
+const Data={
+  state:{
+    categories:[],
+    updatedAt:0
+  },
+  save(){
+    this.state.updatedAt=Date.now();
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(this.state));
+    setBadge("syncing","SYNC…");
+    setTimeout(()=>setBadge("ok","SYNC OK"),500);
+  },
+  load(){
+    const s=localStorage.getItem(STORAGE_KEY);
+    if(s){
+      this.state=JSON.parse(s);
+    }
+  }
+};
+
+function setBadge(cls,text){
+  const b=document.getElementById("syncBadge");
+  b.className=cls;
+  b.textContent=text;
+}
+
+function render(){
+  const ul=document.getElementById("catList");
+  ul.innerHTML="";
+  Data.state.categories.forEach(c=>{
+    const li=document.createElement("li");
+    li.textContent=c;
+    ul.appendChild(li);
+  });
+}
+
+function addCategory(){
+  const v=document.getElementById("catInput").value.trim();
+  if(!v) return;
+  if(!Data.state.categories.includes(v)){
+    Data.state.categories.push(v);
+    Data.save();
+    render();
+  }
+  document.getElementById("catInput").value="";
+}
+
+window.addEventListener("load",()=>{
+  Data.load();
+  render();
+  setBadge("ok","SYNC OK");
+});
+</script>
+</body>
+</html>
