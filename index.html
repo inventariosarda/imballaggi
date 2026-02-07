@@ -244,7 +244,28 @@ body.locked #loginView{display:flex;}
 body.locked #mainApp{display:none;}
 body.unlocked #loginView{display:none;}
 body.unlocked #mainApp{display:block;}
-</style>
+
+    .syncBadge{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:10px 14px; border-radius:999px;
+      border:1px solid var(--border);
+      font-weight:800; letter-spacing:.2px;
+      box-shadow: 0 6px 16px rgba(0,0,0,.18);
+      user-select:none;
+    }
+    .syncBadge .dot{
+      width:10px; height:10px; border-radius:99px;
+      background: rgba(255,255,255,.55);
+      box-shadow: inset 0 0 0 2px rgba(0,0,0,.25);
+    }
+    .syncBadge.ok{ background: rgba(46, 204, 113, .18); }
+    .syncBadge.ok .dot{ background: rgba(46, 204, 113, .95); }
+    .syncBadge.offline{ background: rgba(231, 76, 60, .18); }
+    .syncBadge.offline .dot{ background: rgba(231, 76, 60, .95); }
+    .syncBadge.syncing{ background: rgba(241, 196, 15, .18); }
+    .syncBadge.syncing .dot{ background: rgba(241, 196, 15, .95); }
+
+  </style>
 
 
 <!-- Firebase (cloud) -->
@@ -263,12 +284,12 @@ body.unlocked #mainApp{display:block;}
     <div style="width:min(520px,100%); background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); border-radius:22px; padding:18px; box-shadow:0 20px 60px rgba(0,0,0,.45);">
       <div style="font-weight:900; font-size:22px; color:#fff; margin-bottom:6px;">Inventario Imballaggi</div>
       <div style="color:rgba(255,255,255,.75); margin-bottom:14px; font-size:14px;">
-        Accedi per usare la webapp. Tutto viene salvato online (niente salvataggi locali).
+        Accedi per sincronizzare i dati tra dispositivi. Se sei offline, i dati restano salvati sul dispositivo e verranno sincronizzati al prossimo accesso.
       </div>
       <div class="label">Email</div>
-      <input id="loginEmail" type="email" inputmode="email" autocomplete="username" value="inventario@sardaformaggi.local" />
+      <input id="loginEmail" type="email" inputmode="email" autocomplete="username" value="" />
       <div class="label" style="margin-top:10px;">Password</div>
-      <input id="loginPass" type="password" autocomplete="current-password" value="Imperatore26!" />
+      <input id="loginPass" type="password" autocomplete="current-password" value="" />
       <div class="row" style="margin-top:14px; gap:10px;">
         <button class="btn big" id="btnLogin">Accedi</button>
         <button class="btn big alt" id="btnLogout">Esci</button>
@@ -286,6 +307,8 @@ body.unlocked #mainApp{display:block;}
     </div>
     <div class="actions">
         <button class="chip" onclick="Cloud.logout()">Esci</button>
+      <span id="syncBadge" class="syncBadge offline" title="Stato sincronizzazione"><span class="dot"></span><span class="txt">Offline</span></span>
+
       <button class="chip" id="btnHome">🏠 Home</button>
       <button class="chip" id="btnBackup">💾 Backup</button>
       <button class="chip danger" id="btnReset">🧨 Reset</button>
@@ -386,7 +409,49 @@ body.unlocked #mainApp{display:block;}
     return head + "\n" + body;
   };
 
-  const loadXLSX = (() => {
+  
+  // ===== Sync badge (Sync OK / Offline)
+  const SyncBadge = {
+    el:null, dot:null, txt:null,
+    state:"offline", // offline|ok|syncing
+    init(){
+      this.el = document.getElementById("syncBadge");
+      if(!this.el) return;
+      this.dot = this.el.querySelector(".dot");
+      this.txt = this.el.querySelector(".txt");
+      window.addEventListener("online", ()=>this.refresh());
+      window.addEventListener("offline", ()=>this.refresh());
+      this.refresh();
+    },
+    set(state, label){
+      if(!this.el) return;
+      this.el.classList.remove("offline","ok","syncing");
+      this.el.classList.add(state);
+      this.state = state;
+      if(this.txt) this.txt.textContent = label;
+    },
+    refresh(){
+      const online = navigator.onLine !== false;
+      if(!online){ this.set("offline","Offline"); return; }
+      // If Cloud exists and user is authenticated, show OK/syncing; otherwise "OK" means local only.
+      try{
+        const authed = window.firebase && firebase.auth && firebase.auth().currentUser;
+        if(!authed){
+          this.set("ok","Sync OK"); // local-only, but online
+          return;
+        }
+        // authed: if there are pending pushes or applying snapshot -> syncing
+        if(window.Cloud && (Cloud._syncing === true || Cloud.applying === true)){
+          this.set("syncing","Sync...");
+          return;
+        }
+        this.set("ok","Sync OK");
+      }catch(e){
+        this.set("ok","Sync OK");
+      }
+    }
+  };
+const loadXLSX = (() => {
     let p = null;
     const urls = [
       "https://cdn.jsdelivr.net/npm/xlsx@0.20.3/dist/xlsx.full.min.js",
@@ -429,27 +494,43 @@ body.unlocked #mainApp{display:block;}
 
       // 2) Fallback to empty state
       if(!st || typeof st !== "object"){
-        st = { categories: [], inventories: [], last: { screen: "home" }, meta:{updatedAt:0} };
+        st = { categories: [], inventories: [], last: { screen: "home" }, meta:{updatedAt:0, dirty:false} };
       }
 
       this.state = st;
       ensureState();
     },
-    save(){
+    save(opts){
       ensureState();
-      // Update meta timestamp
+      const o = (opts && typeof opts === "object") ? opts : {};
+      const navOnly = !!o.navOnly;
+
+      // Ensure meta
       try{
         if(!this.state.meta || typeof this.state.meta !== "object") this.state.meta = {};
-        this.state.meta.updatedAt = Date.now();
+        if(typeof this.state.meta.updatedAt !== "number") this.state.meta.updatedAt = 0;
+        if(typeof this.state.meta.dirty !== "boolean") this.state.meta.dirty = false;
       }catch(e){}
 
-      // Always persist locally
+      // If it's a real data change, mark dirty + bump updatedAt.
+      if(!navOnly){
+        try{
+          this.state.meta.dirty = true;
+          this.state.meta.updatedAt = Date.now();
+        }catch(e){}
+      }
+
+      // Always persist locally (so refresh never loses data)
       try{
         localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.state));
       }catch(e){}
 
-      // Push to Firebase (debounced) when logged in
-      if(window.Cloud && Cloud.schedulePush) Cloud.schedulePush();
+      // Push to Firebase only for real data changes
+      if(!navOnly && window.Cloud && Cloud.schedulePush) Cloud.schedulePush();
+    },
+    saveNav(){
+      // Persist navigation (last.screen etc.) locally only, without touching sync timestamps
+      try{ this.save({navOnly:true}); }catch(e){}
     },
     download(filename, blob){
       const a=document.createElement("a");
@@ -657,7 +738,7 @@ const UI = {
       `);
 
       Data.state.last={screen:"home"};
-      Data.save();
+      Data.saveNav();
     }
   };
 
@@ -724,7 +805,7 @@ const UI = {
       },0);
 
       Data.state.last={screen:"setup"};
-      Data.save();
+      Data.saveNav();
     },
 
     addCategory(){
@@ -835,7 +916,7 @@ const UI = {
       },0);
 
       Data.state.last={screen:"setupCat", catId};
-      Data.save();
+      Data.saveNav();
     },
 
     renameCategory(catId,value){
@@ -973,7 +1054,7 @@ const UI = {
           </div>
         `);
         Data.state.last={screen:"inventory", invId};
-        Data.save();
+        Data.saveNav();
         return;
       }
 
@@ -1019,7 +1100,7 @@ const UI = {
       `);
 
       Data.state.last={screen:"inventory", invId};
-      Data.save();
+      Data.saveNav();
     },
 
     openCategory(invId, catId){
@@ -1074,7 +1155,7 @@ const UI = {
       `);
 
       Data.state.last={screen:"inventoryCat", invId, catId};
-      Data.save();
+      Data.saveNav();
     },
 
     saveNotes(invId){
@@ -1219,7 +1300,7 @@ const UI = {
       `);
 
       Data.state.last={screen:"viewInventories"};
-      Data.save();
+      Data.saveNav();
     }
   };
 
@@ -1254,28 +1335,86 @@ const UI = {
       const inv=Data.state.inventories.find(i=>i.id===invId);
       if(!inv) throw new Error("Inventario non trovato.");
       const cats=(Array.isArray(Data.state.categories)?Data.state.categories:[]).slice().sort((a,b)=>NAT.compare(a.name, b.name));
-      const rows=[];
-      rows.push({Categoria:"", Articolo:"", Descrizione:`Inventario: ${inv.name}`, Totale:"", Note:(inv.notes||""), Dettaglio:""});
-      rows.push({Categoria:"", Articolo:"", Descrizione:`Creato: ${fmtDate(inv.createdAt)} - Aggiornato: ${fmtDate(inv.updatedAt)}`, Totale:"", Note:"", Dettaglio:""});
-      rows.push({Categoria:"", Articolo:"", Descrizione:"", Totale:"", Note:"", Dettaglio:""});
 
+      // --- Sheet 1: Riepilogo (bella figura)
+      const summaryRows=[];
+      let grand=0;
+      cats.forEach(cat=>{
+        let catTotal=0;
+        let catItems=0;
+        (cat.items||[]).forEach(item=>{
+          const entries=inv.counts?.[item.id]||[];
+          const total=sumEntries(entries);
+          if(total!==0){ catItems++; }
+          catTotal += total;
+        });
+        grand += catTotal;
+        summaryRows.push({
+          "Categoria": cat.name,
+          "Articoli con quantità": catItems,
+          "Totale categoria": catTotal
+        });
+      });
+      summaryRows.push({"Categoria":"", "Articoli con quantità":"", "Totale categoria":""});
+      summaryRows.push({"Categoria":"TOTALE GENERALE", "Articoli con quantità":"", "Totale categoria": grand});
+
+      // --- Sheet 2: Dettaglio (tabella pulita, filtro)
+      const detailRows=[];
       cats.forEach(cat=>{
         (cat.items||[]).slice().sort((a,b)=>NAT.compare(a.code, b.code)).forEach(item=>{
           const entries=inv.counts?.[item.id]||[];
           const total=sumEntries(entries);
-          const details=entries.map(e=>{
-            const n=(e.note||"").trim();
-            return `${fmtQty(e.qty)}${n ? " ("+n+")" : ""} @ ${fmtDate(e.at)}`;
-          }).join(" | ");
-          rows.push({Categoria:cat.name, Articolo:item.code, Descrizione:item.desc||"", Totale:total, Note:"", Dettaglio:details});
+          if(total===0) return; // non esportare righe vuote (più pulito)
+          const lastAt = entries.length ? entries.map(e=>new Date(e.at)).sort((a,b)=>b-a)[0] : null;
+          detailRows.push({
+            "Categoria": cat.name,
+            "Codice": item.code,
+            "Descrizione": item.desc||"",
+            "Totale": total,
+            "Ultimo aggiornamento": lastAt ? fmtDate(lastAt) : ""
+          });
+        });
+      });
+
+      // --- Sheet 3: Movimenti (facoltativo ma professionale)
+      const moveRows=[];
+      cats.forEach(cat=>{
+        (cat.items||[]).slice().sort((a,b)=>NAT.compare(a.code, b.code)).forEach(item=>{
+          const entries=(inv.counts?.[item.id]||[]).slice().sort((a,b)=>new Date(a.at)-new Date(b.at));
+          entries.forEach(e=>{
+            moveRows.push({
+              "Data/Ora": fmtDate(e.at),
+              "Categoria": cat.name,
+              "Codice": item.code,
+              "Descrizione": item.desc||"",
+              "Q.tà": Number(e.qty)||0,
+              "Nota": (e.note||"").trim()
+            });
+          });
         });
       });
 
       const wb=XLSX.utils.book_new();
-      const ws=XLSX.utils.json_to_sheet(rows,{skipHeader:false});
-      ws["!cols"]=[{wch:18},{wch:12},{wch:40},{wch:10},{wch:34},{wch:90}];
-      XLSX.utils.book_append_sheet(wb,ws,"Inventario");
 
+      // Summary
+      const ws1=XLSX.utils.json_to_sheet(summaryRows,{skipHeader:false});
+      ws1["!cols"]=[{wch:26},{wch:18},{wch:16}];
+      XLSX.utils.book_append_sheet(wb,ws1,"Riepilogo");
+
+      // Detail
+      const ws2=XLSX.utils.json_to_sheet(detailRows,{skipHeader:false});
+      ws2["!cols"]=[{wch:22},{wch:12},{wch:44},{wch:10},{wch:22}];
+      // Auto-filter (A1:E1)
+      try{ ws2["!autofilter"] = { ref: "A1:E1" }; }catch(e){}
+      XLSX.utils.book_append_sheet(wb,ws2,"Dettaglio");
+
+      // Movimenti
+      const ws3=XLSX.utils.json_to_sheet(moveRows,{skipHeader:false});
+      ws3["!cols"]=[{wch:20},{wch:22},{wch:12},{wch:40},{wch:10},{wch:34}];
+      try{ ws3["!autofilter"] = { ref: "A1:F1" }; }catch(e){}
+      XLSX.utils.book_append_sheet(wb,ws3,"Movimenti");
+
+      // File name: inventario + data
       const filename=`${safeFile(inv.name)}.xlsx`;
       const out=XLSX.write(wb,{bookType:"xlsx", type:"array"});
       const blob=new Blob([out],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -1427,6 +1566,7 @@ const UI = {
             lockUI();
           }
           this.setStatus("");
+          try{ SyncBadge.refresh(); }catch(e){}
         });
       }catch(e){
         console.error(e);
@@ -1480,6 +1620,8 @@ const UI = {
             ensureStateCloud();
             Data.state.last.screen = localScreen;
             Data.state.meta.updatedAt = remoteUpdated;
+            Data.state.meta.dirty = false;
+            Data.state.meta.lastSyncedAt = remoteUpdated;
 
             // Persist locally without triggering another push
             try{
@@ -1494,6 +1636,7 @@ const UI = {
             console.error(e);
           }finally{
             this.applying = false;
+            try{ SyncBadge.refresh(); }catch(e){}
           }
         }else{
           // Local is newer: push it up (debounced)
@@ -1506,8 +1649,17 @@ const UI = {
       this.ref = null;
     },
     schedulePush(){
+      try{ this._syncing = true; SyncBadge.refresh && SyncBadge.refresh(); }catch(e){}
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
+      // Only push if we have real unsynced changes
+      try{
+        if(!(Data && Data.state && Data.state.meta && Data.state.meta.dirty)){
+          this._syncing = false;
+          SyncBadge.refresh && SyncBadge.refresh();
+          return;
+        }
+      }catch(e){}
       clearTimeout(this.t);
       this.t = setTimeout(()=>this.push(), 150);
     },
@@ -1515,7 +1667,20 @@ const UI = {
       if(this.applying) return;
       if(!firebase.auth().currentUser) return;
       ensureStateCloud();
-      return this.db.ref(this.path()).set({ updatedAt: Date.now(), state: Data.state });
+      const ts = Date.now();
+      // Keep state's updatedAt consistent with what we send
+      try{ if(Data && Data.state && Data.state.meta) Data.state.meta.updatedAt = ts; }catch(e){}
+      return this.db.ref(this.path()).set({ updatedAt: ts, state: Data.state })
+        .then(()=>{
+          try{
+            if(Data && Data.state && Data.state.meta){
+              Data.state.meta.dirty = false;
+              Data.state.meta.lastSyncedAt = ts;
+            }
+          }catch(e){}
+          try{ this._syncing=false; SyncBadge.refresh(); }catch(e){}
+        })
+        .catch((err)=>{ try{ this._syncing=false; SyncBadge.refresh(); }catch(e){} throw err; });
     },
     
     async resetCloud(){
@@ -1553,15 +1718,9 @@ async login(email, pass){
     }
   };
 
-  // Hook Data.save to cloud push
-  try{
-    Data.save = function(){
-      try{ Cloud.schedulePush(); }catch(e){}
-    };
-  }catch(e){}
-
   // Wire login buttons + boot
   document.addEventListener("DOMContentLoaded", ()=>{
+    try{ SyncBadge.init(); }catch(e){}
     // always start locked
     lockUI();
     try{
