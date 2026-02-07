@@ -1462,6 +1462,21 @@ const UI = {
     };
   }catch(e){}
 
+
+  // Override Reset: clears CLOUD state (no local)
+  try{
+    Data.resetAll = function(){
+      if(!confirm("ATTENZIONE: cancello tutto (setup + inventari) ONLINE. Sicuro?")) return;
+      // prevent bounce while we overwrite
+      try{ Cloud.applying = true; }catch(e){}
+      Data.state = { categories: [], inventories: [], last: { screen: "home" } };
+      try{ UI.goHome(true); }catch(e){}
+      try{ UI.render(); }catch(e){}
+      try{ Cloud.applying = false; }catch(e){}
+      try{ Cloud.push(); }catch(e){}
+    };
+  }catch(e){}
+
   // Wire login buttons + boot
   document.addEventListener("DOMContentLoaded", ()=>{
     // always start locked
